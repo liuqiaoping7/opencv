@@ -322,6 +322,8 @@ public:
     Size_& operator = (const Size_& sz);
     //! the area (width*height)
     _Tp area() const;
+    //! aspect ratio (width/height)
+    double aspectRatio() const;
     //! true if empty
     bool empty() const;
 
@@ -1372,6 +1374,20 @@ Point_<_Tp> operator / (const Point_<_Tp>& a, double b)
 }
 
 
+template<typename _AccTp> static inline _AccTp normL2Sqr(const Point_<int>& pt);
+template<typename _AccTp> static inline _AccTp normL2Sqr(const Point_<int64>& pt);
+template<typename _AccTp> static inline _AccTp normL2Sqr(const Point_<float>& pt);
+template<typename _AccTp> static inline _AccTp normL2Sqr(const Point_<double>& pt);
+
+template<> inline int normL2Sqr<int>(const Point_<int>& pt) { return pt.dot(pt); }
+template<> inline int64 normL2Sqr<int64>(const Point_<int64>& pt) { return pt.dot(pt); }
+template<> inline float normL2Sqr<float>(const Point_<float>& pt) { return pt.dot(pt); }
+template<> inline double normL2Sqr<double>(const Point_<int>& pt) { return pt.dot(pt); }
+
+template<> inline double normL2Sqr<double>(const Point_<float>& pt) { return pt.ddot(pt); }
+template<> inline double normL2Sqr<double>(const Point_<double>& pt) { return pt.ddot(pt); }
+
+
 
 //////////////////////////////// 3D Point ///////////////////////////////
 
@@ -1654,6 +1670,12 @@ _Tp Size_<_Tp>::area() const
     CV_DbgAssert(!std::numeric_limits<_Tp>::is_integer
         || width == 0 || result / width == height); // make sure the result fits in the return value
     return result;
+}
+
+template<typename _Tp> inline
+double Size_<_Tp>::aspectRatio() const
+{
+    return width / static_cast<double>(height);
 }
 
 template<typename _Tp> inline

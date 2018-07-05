@@ -5,6 +5,8 @@
 // Copyright (C) 2018, Intel Corporation, all rights reserved.
 // Third party copyrights are property of their respective owners.
 
+#include "../precomp.hpp"
+
 #ifdef HAVE_PROTOBUF
 
 #include "tf_graph_simplifier.hpp"
@@ -538,6 +540,37 @@ public:
     }
 };
 
+// In case of resizing by factor.
+class ResizeBilinearSubgraph : public Subgraph
+{
+public:
+    ResizeBilinearSubgraph()
+    {
+        int input = addNodeToMatch("");
+
+        int shape = addNodeToMatch("Shape", input);
+        int stack = addNodeToMatch("Const");
+        int stack_1 = addNodeToMatch("Const");
+        int stack_2 = addNodeToMatch("Const");
+        int strided_slice = addNodeToMatch("StridedSlice", shape, stack, stack_1, stack_2);
+        int factorY = addNodeToMatch("Const");
+        int mul = addNodeToMatch("Mul", strided_slice, factorY);
+
+        shape = addNodeToMatch("Shape", input);
+        stack = addNodeToMatch("Const");
+        stack_1 = addNodeToMatch("Const");
+        stack_2 = addNodeToMatch("Const");
+        strided_slice = addNodeToMatch("StridedSlice", shape, stack, stack_1, stack_2);
+        int factorX = addNodeToMatch("Const");
+        int mul_1 = addNodeToMatch("Mul", strided_slice, factorX);
+
+        int pack = addNodeToMatch("Pack", mul, mul_1);
+
+        addNodeToMatch("ResizeBilinear", input, pack);
+        setFusedNode("ResizeBilinear", input, factorY, factorX);
+    }
+};
+
 void simplifySubgraphs(tensorflow::GraphDef& net)
 {
     std::vector<Ptr<Subgraph> > subgraphs;
@@ -551,6 +584,7 @@ void simplifySubgraphs(tensorflow::GraphDef& net)
     subgraphs.push_back(Ptr<Subgraph>(new L2NormalizeSubgraph()));
     subgraphs.push_back(Ptr<Subgraph>(new DeconvolutionValidKerasSubgraph()));
     subgraphs.push_back(Ptr<Subgraph>(new DeconvolutionSameKerasSubgraph()));
+    subgraphs.push_back(Ptr<Subgraph>(new ResizeBilinearSubgraph()));
 
     int numNodes = net.node_size();
     std::vector<int> matchedNodesIds;
@@ -612,7 +646,7 @@ void RemoveIdentityOps(tensorflow::GraphDef& net)
 
 Mat getTensorContent(const tensorflow::TensorProto &tensor)
 {
-    std::string content = tensor.tensor_content();
+    const std::string& content = tensor.tensor_content();
     switch (tensor.dtype())
     {
         case tensorflow::DT_FLOAT:
@@ -679,6 +713,14 @@ Mat getTensorContent(const tensorflow::TensorProto &tensor)
             break;
     }
     return Mat();
+}
+
+void releaseTensor(tensorflow::TensorProto* tensor)
+{
+    if (!tensor->mutable_tensor_content()->empty())
+    {
+        delete tensor->release_tensor_content();
+    }
 }
 
 CV__DNN_EXPERIMENTAL_NS_END

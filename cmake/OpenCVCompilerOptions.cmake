@@ -1,5 +1,5 @@
 if("${CMAKE_CXX_COMPILER};${CMAKE_C_COMPILER};${CMAKE_CXX_COMPILER_LAUNCHER}" MATCHES "ccache")
-  set(CMAKE_COMPILER_IS_CCACHE 1)  # FIXIT Avoid setting of CMAKE_ variables
+  set(CMAKE_COMPILER_IS_CCACHE 1)  # TODO: FIXIT Avoid setting of CMAKE_ variables
   set(OPENCV_COMPILER_IS_CCACHE 1)
 endif()
 function(access_CMAKE_COMPILER_IS_CCACHE)
@@ -104,7 +104,7 @@ if(CV_GCC OR CV_CLANG)
   add_extra_compiler_option(-Wuninitialized)
   add_extra_compiler_option(-Winit-self)
   if(HAVE_CXX11)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT ENABLE_PRECOMPILED_HEADERS)
       add_extra_compiler_option(-Wsuggest-override)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
       add_extra_compiler_option(-Winconsistent-missing-override)
