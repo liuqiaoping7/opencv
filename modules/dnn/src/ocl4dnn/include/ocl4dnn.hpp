@@ -222,8 +222,6 @@ class OCL4DNNConvSpatial
         bool createDWConvKernel(int32_t blockWidth,
                                 int32_t blockHeight,
                                 int32_t blockDepth);
-        void CreateSubBuffer(const UMat& buffer, UMat& sub_buffer,
-                             int32_t offset, int32_t size, bool write_only);
         bool convolve(const UMat &bottom, UMat &top,
                       const UMat &weight, const UMat &bias,
                       int32_t numImages,
@@ -269,13 +267,11 @@ class OCL4DNNConvSpatial
         void generate_idlf_tuneritems(std::vector< cv::Ptr<tunerParam> > &tunerItems,
                                       int blockM, int blockK, int simd_size);
         void setFusionDefine(ocl4dnnFusedActiv_t fused_activ, bool fused_eltwise);
-        void setFusionArg(ocl4dnnFusedActiv_t fused_activ, bool fused_eltwise, ocl::Kernel &kernel, cl_uint &argIdx);
+        void setFusionArg(ocl4dnnFusedActiv_t fused_activ, bool fused_eltwise, int fused_eltwise_offset, ocl::Kernel &kernel, cl_uint &argIdx);
 
         int32_t group_;
         bool bias_term_;
         UMat swizzled_weights_umat;
-        UMat weights_half;
-        UMat bias_half;
         UMat bottom_data2_;
 
         int32_t bottom_index_;
@@ -345,7 +341,7 @@ struct OCL4DNNPoolConfig
 {
     OCL4DNNPoolConfig() :
         kernel(1, 1),
-        pad(0, 0),
+        pad_l(0), pad_t(0), pad_r(0), pad_b(0),
         stride(1, 1),
         dilation(1, 1),
         channels(0),
@@ -358,7 +354,7 @@ struct OCL4DNNPoolConfig
     MatShape in_shape;
     MatShape out_shape;
     Size kernel;
-    Size pad;
+    int pad_l, pad_t, pad_r, pad_b;
     Size stride;
     Size dilation;
 
@@ -381,7 +377,6 @@ class OCL4DNNPool
                      UMat& top_mask);
     private:
         // Pooling parameters
-        std::vector<int32_t> pad_;
         std::vector<int32_t> stride_;
         std::vector<int32_t> kernel_shape_;
         std::vector<int32_t> im_in_shape_;
@@ -394,8 +389,10 @@ class OCL4DNNPool
         int32_t kernel_w_;
         int32_t stride_h_;
         int32_t stride_w_;
-        int32_t pad_h_;
-        int32_t pad_w_;
+        int32_t pad_t_;
+        int32_t pad_l_;
+        int32_t pad_b_;
+        int32_t pad_r_;
         int32_t height_;
         int32_t width_;
         int32_t pooled_height_;
@@ -432,7 +429,7 @@ class OCL4DNNInnerProduct
                      UMat& top_data);
     private:
         OCL4DNNInnerProductConfig config_;
-        int32_t axis_;
+        //int32_t axis_;
         int32_t num_output_;
         int32_t M_;
         int32_t N_;

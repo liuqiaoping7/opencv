@@ -11,15 +11,15 @@ using std::cout;
 using std::endl;
 
 const char* keys =
-    "{ help h |                          | Print help message. }"
-    "{ input1 | ../data/box.png          | Path to input image 1. }"
-    "{ input2 | ../data/box_in_scene.png | Path to input image 2. }";
+    "{ help h |                  | Print help message. }"
+    "{ input1 | box.png          | Path to input image 1. }"
+    "{ input2 | box_in_scene.png | Path to input image 2. }";
 
 int main( int argc, char* argv[] )
 {
     CommandLineParser parser( argc, argv, keys );
-    Mat img1 = imread( parser.get<String>("input1"), IMREAD_GRAYSCALE );
-    Mat img2 = imread( parser.get<String>("input2"), IMREAD_GRAYSCALE );
+    Mat img1 = imread( samples::findFile( parser.get<String>("input1") ), IMREAD_GRAYSCALE );
+    Mat img2 = imread( samples::findFile( parser.get<String>("input2") ), IMREAD_GRAYSCALE );
     if ( img1.empty() || img2.empty() )
     {
         cout << "Could not open or find the image!\n" << endl;
@@ -46,7 +46,7 @@ int main( int argc, char* argv[] )
     std::vector<DMatch> good_matches;
     for (size_t i = 0; i < knn_matches.size(); i++)
     {
-        if (knn_matches[i].size() > 1 && knn_matches[i][0].distance / knn_matches[i][1].distance <= ratio_thresh)
+        if (knn_matches[i][0].distance < ratio_thresh * knn_matches[i][1].distance)
         {
             good_matches.push_back(knn_matches[i][0]);
         }

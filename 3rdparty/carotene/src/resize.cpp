@@ -109,6 +109,7 @@ bool isResizeLinearOpenCVSupported(const Size2D &ssize, const Size2D &dsize, u32
             && dsize.width >= 2 && dsize.height >= 8
             && (2*dsize.width != ssize.width || 2*dsize.height != ssize.height)) // 2x downscaling is performed as area in OpenCV which differs from this implementation
             return isSupportedConfiguration();
+        return false;
     default:
         return false;
     };
@@ -757,7 +758,7 @@ inline void resizeAreaRounding(const Size2D &ssize, const Size2D &dsize,
     }
     else if (channels == 3)
     {
-        if ((wr == 2.0f) && (wr == 2.0f))
+        if ((wr == 2.0f) && (hr == 2.0f))
         {
 #ifndef __ANDROID__
             size_t roiw16 = dsize.width >= 15 ? (dsize.width - 15) * 3 : 0;

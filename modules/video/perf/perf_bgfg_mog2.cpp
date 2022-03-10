@@ -4,7 +4,6 @@
 
 #include "perf_precomp.hpp"
 
-#ifdef HAVE_VIDEO_INPUT
 #include "perf_bgfg_utils.hpp"
 
 namespace opencv_test { namespace {
@@ -15,7 +14,7 @@ typedef tuple<std::string, int> VideoMOG2ParamType;
 typedef TestBaseWithParam<VideoMOG2ParamType> MOG2_Apply;
 typedef TestBaseWithParam<VideoMOG2ParamType> MOG2_GetBackgroundImage;
 
-PERF_TEST_P(MOG2_Apply, Mog2, Combine(Values("gpu/video/768x576.avi", "gpu/video/1920x1080.avi"), Values(1,3)))
+PERF_TEST_P(MOG2_Apply, Mog2, Combine(Values("cv/video/768x576.avi", "cv/video/1920x1080.avi"), Values(1,3)))
 {
     VideoMOG2ParamType params = GetParam();
 
@@ -27,7 +26,8 @@ PERF_TEST_P(MOG2_Apply, Mog2, Combine(Values("gpu/video/768x576.avi", "gpu/video
     vector<Mat> frame_buffer(nFrame);
 
     cv::VideoCapture cap(inputFile);
-    ASSERT_TRUE(cap.isOpened());
+    if (!cap.isOpened())
+        throw SkipTestException("Video file can not be opened");
     prepareData(cap, cn, frame_buffer);
 
     Mat foreground;
@@ -46,8 +46,8 @@ PERF_TEST_P(MOG2_Apply, Mog2, Combine(Values("gpu/video/768x576.avi", "gpu/video
 }
 
 PERF_TEST_P(MOG2_GetBackgroundImage, Mog2, Values(
-        std::make_pair<string, int>("gpu/video/768x576.avi", 5),
-        std::make_pair<string, int>("gpu/video/1920x1080.avi", 5)))
+        std::make_pair<string, int>("cv/video/768x576.avi", 5),
+        std::make_pair<string, int>("cv/video/1920x1080.avi", 5)))
 {
     VideoMOG2ParamType params = GetParam();
 
@@ -60,7 +60,8 @@ PERF_TEST_P(MOG2_GetBackgroundImage, Mog2, Values(
     vector<Mat> frame_buffer(nFrame);
 
     cv::VideoCapture cap(inputFile);
-    ASSERT_TRUE(cap.isOpened());
+    if (!cap.isOpened())
+        throw SkipTestException("Video file can not be opened");
     prepareData(cap, cn, frame_buffer, skipFrames);
 
     Mat foreground, background;
@@ -85,5 +86,3 @@ PERF_TEST_P(MOG2_GetBackgroundImage, Mog2, Values(
 }
 
 }}// namespace
-
-#endif

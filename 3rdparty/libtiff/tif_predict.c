@@ -1,5 +1,3 @@
-/* $Id: tif_predict.c,v 1.44 2017-06-18 10:31:50 erouault Exp $ */
-
 /*
  * Copyright (c) 1988-1997 Sam Leffler
  * Copyright (c) 1991-1997 Silicon Graphics, Inc.
@@ -118,7 +116,7 @@ PredictorSetupDecode(TIFF* tif)
 	TIFFDirectory* td = &tif->tif_dir;
 
 	/* Note: when PredictorSetup() fails, the effets of setupdecode() */
-	/* will not be "cancelled" so setupdecode() might be robust to */
+	/* will not be "canceled" so setupdecode() might be robust to */
 	/* be called several times. */
 	if (!(*sp->setupdecode)(tif) || !PredictorSetup(tif))
 		return 0;
@@ -272,8 +270,8 @@ PredictorSetupEncode(TIFF* tif)
     }
 
 /* Remarks related to C standard compliance in all below functions : */
-/* - to avoid any undefined behaviour, we only operate on unsigned types */
-/*   since the behaviour of "overflows" is defined (wrap over) */
+/* - to avoid any undefined behavior, we only operate on unsigned types */
+/*   since the behavior of "overflows" is defined (wrap over) */
 /* - when storing into the byte stream, we explicitly mask with 0xff so */
 /*   as to make icc -check=conversions happy (not necessary by the standard) */
 

@@ -29,7 +29,7 @@ What happens in background ?
     objects). Everything inside rectangle is unknown. Similarly any user input specifying
     foreground and background are considered as hard-labelling which means they won't change in
     the process.
--   Computer does an initial labelling depeding on the data we gave. It labels the foreground and
+-   Computer does an initial labelling depending on the data we gave. It labels the foreground and
     background pixels (or it hard-labels)
 -   Now a Gaussian Mixture Model(GMM) is used to model the foreground and background.
 -   Depending on the data we gave, GMM learns and create new pixel distribution. That is, the
@@ -59,7 +59,7 @@ Demo
 We use the function: **cv.grabCut (image, mask, rect, bgdModel, fgdModel, iterCount, mode = cv.GC_EVAL)**
 
 @param image      input 8-bit 3-channel image.
-@param mask       input/output 8-bit single-channel mask. The mask is initialized by the function when mode is set to GC_INIT_WITH_RECT. Its elements may have one of the cv.rabCutClasses.
+@param mask       input/output 8-bit single-channel mask. The mask is initialized by the function when mode is set to GC_INIT_WITH_RECT. Its elements may have one of the cv.grabCutClasses.
 @param rect       ROI containing a segmented object. The pixels outside of the ROI are marked as "obvious background". The parameter is only used when mode==GC_INIT_WITH_RECT.
 @param bgdModel   temporary array for the background model. Do not modify it while you are processing the same image.
 @param fgdModel   temporary arrays for the foreground model. Do not modify it while you are processing the same image.

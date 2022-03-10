@@ -48,6 +48,8 @@
 
 #include "precomp.hpp"
 
+#ifndef OPENCV_EXCLUDE_C_API
+
 #define  CV_ORIGIN_TL  0
 #define  CV_ORIGIN_BL  1
 
@@ -250,7 +252,7 @@ cvInitMatNDHeader( CvMatND* mat, int dims, const int* sizes,
     for( int i = dims - 1; i >= 0; i-- )
     {
         if( sizes[i] < 0 )
-            CV_Error( CV_StsBadSize, "one of dimesion sizes is non-positive" );
+            CV_Error( CV_StsBadSize, "one of dimension sizes is non-positive" );
         mat->dim[i].size = sizes[i];
         if( step > INT_MAX )
             CV_Error( CV_StsOutOfRange, "The array is too big" );
@@ -495,7 +497,7 @@ cvInitNArrayIterator( int count, CvArr** arrs,
 // returns zero value if iteration is finished, non-zero otherwise
 CV_IMPL int cvNextNArraySlice( CvNArrayIterator* iterator )
 {
-    assert( iterator != 0 );
+    CV_Assert( iterator != 0 );
     int i, dims;
 
     for( dims = iterator->dims; dims > 0; dims-- )
@@ -545,7 +547,7 @@ cvCreateSparseMat( int dims, const int* sizes, int type )
     for( i = 0; i < dims; i++ )
     {
         if( sizes[i] <= 0 )
-            CV_Error( CV_StsBadSize, "one of dimesion sizes is non-positive" );
+            CV_Error( CV_StsBadSize, "one of dimension sizes is non-positive" );
     }
 
     CvSparseMat* arr = (CvSparseMat*)cvAlloc(sizeof(*arr)+MAX(0,dims-CV_MAX_DIM)*sizeof(arr->size[0]));
@@ -646,7 +648,7 @@ icvGetNodePtr( CvSparseMat* mat, const int* idx, int* _type,
     int i, tabidx;
     unsigned hashval = 0;
     CvSparseNode *node;
-    assert( CV_IS_SPARSE_MAT( mat ));
+    CV_Assert( CV_IS_SPARSE_MAT( mat ));
 
     if( !precalc_hashval )
     {
@@ -695,7 +697,7 @@ icvGetNodePtr( CvSparseMat* mat, const int* idx, int* _type,
             int newrawsize = newsize*sizeof(newtable[0]);
 
             CvSparseMatIterator iterator;
-            assert( (newsize & (newsize - 1)) == 0 );
+            CV_Assert( (newsize & (newsize - 1)) == 0 );
 
             // resize hash table
             newtable = (void**)cvAlloc( newrawsize );
@@ -740,7 +742,7 @@ icvDeleteNode( CvSparseMat* mat, const int* idx, unsigned* precalc_hashval )
     int i, tabidx;
     unsigned hashval = 0;
     CvSparseNode *node, *prev = 0;
-    assert( CV_IS_SPARSE_MAT( mat ));
+    CV_Assert( CV_IS_SPARSE_MAT( mat ));
 
     if( !precalc_hashval )
     {
@@ -1017,7 +1019,7 @@ cvGetRawData( const CvArr* arr, uchar** data, int* step, CvSize* roi_size )
             *data = mat->data.ptr;
 
         if( roi_size )
-            *roi_size = cvGetMatSize( mat );
+            *roi_size = cvSize(cvGetMatSize( mat ));
     }
     else if( CV_IS_IMAGE( arr ))
     {
@@ -1218,7 +1220,7 @@ cvGetDimSize( const CvArr* arr, int index )
 CV_IMPL CvSize
 cvGetSize( const CvArr* arr )
 {
-    CvSize size;
+    CvSize size = {0, 0};
 
     if( CV_IS_MAT_HDR_Z( arr ))
     {
@@ -1460,7 +1462,7 @@ cvScalarToRawData( const CvScalar* scalar, void* data, int type, int extend_to_1
     int cn = CV_MAT_CN( type );
     int depth = type & CV_MAT_DEPTH_MASK;
 
-    assert( scalar && data );
+    CV_Assert( scalar && data );
     if( (unsigned)(cn - 1) >= 4 )
         CV_Error( CV_StsOutOfRange, "The number of channels must be 1, 2, 3 or 4" );
 
@@ -1507,7 +1509,7 @@ cvScalarToRawData( const CvScalar* scalar, void* data, int type, int extend_to_1
             ((double*)data)[cn] = (double)(scalar->val[cn]);
         break;
     default:
-        assert(0);
+        CV_Assert(0);
         CV_Error( CV_BadDepth, "" );
     }
 
@@ -1532,7 +1534,7 @@ cvRawDataToScalar( const void* data, int flags, CvScalar* scalar )
 {
     int cn = CV_MAT_CN( flags );
 
-    assert( scalar && data );
+    CV_Assert( scalar && data );
 
     if( (unsigned)(cn - 1) >= 4 )
         CV_Error( CV_StsOutOfRange, "The number of channels must be 1, 2, 3 or 4" );
@@ -1570,7 +1572,7 @@ cvRawDataToScalar( const void* data, int flags, CvScalar* scalar )
             scalar->val[cn] = ((double*)data)[cn];
         break;
     default:
-        assert(0);
+        CV_Assert(0);
         CV_Error( CV_BadDepth, "" );
     }
 }
@@ -1725,8 +1727,8 @@ cvPtr1D( const CvArr* arr, int idx, int* _type )
         else
         {
             int i, n = m->dims;
-            CV_DbgAssert( n <= CV_MAX_DIM_HEAP );
-            int _idx[CV_MAX_DIM_HEAP];
+            CV_DbgAssert( n <= CV_MAX_DIM );
+            int _idx[CV_MAX_DIM];
 
             for( i = n - 1; i >= 0; i-- )
             {
@@ -1918,7 +1920,7 @@ cvPtrND( const CvArr* arr, const int* idx, int* _type,
 CV_IMPL  CvScalar
 cvGet1D( const CvArr* arr, int idx )
 {
-    CvScalar scalar(0);
+    CvScalar scalar = cvScalar();
     int type = 0;
     uchar* ptr;
 
@@ -1953,7 +1955,7 @@ cvGet1D( const CvArr* arr, int idx )
 CV_IMPL  CvScalar
 cvGet2D( const CvArr* arr, int y, int x )
 {
-    CvScalar scalar(0);
+    CvScalar scalar = cvScalar();
     int type = 0;
     uchar* ptr;
 
@@ -1987,7 +1989,7 @@ cvGet2D( const CvArr* arr, int y, int x )
 CV_IMPL  CvScalar
 cvGet3D( const CvArr* arr, int z, int y, int x )
 {
-    CvScalar scalar(0);
+    CvScalar scalar = cvScalar();
     int type = 0;
     uchar* ptr;
 
@@ -2009,7 +2011,7 @@ cvGet3D( const CvArr* arr, int z, int y, int x )
 CV_IMPL  CvScalar
 cvGetND( const CvArr* arr, const int* idx )
 {
-    CvScalar scalar(0);
+    CvScalar scalar = cvScalar();
     int type = 0;
     uchar* ptr;
 
@@ -2621,7 +2623,7 @@ cvReshapeMatND( const CvArr* arr,
 
             {
             CvMatND* mat = (CvMatND*)arr;
-            assert( new_cn > 0 );
+            CV_Assert( new_cn > 0 );
             int last_dim_size = mat->dim[mat->dims-1].size*CV_MAT_CN(mat->type);
             int new_size = last_dim_size/new_cn;
 
@@ -2899,7 +2901,7 @@ CV_IMPL IplImage *
 cvCreateImage( CvSize size, int depth, int channels )
 {
     IplImage *img = cvCreateImageHeader( size, depth, channels );
-    assert( img );
+    CV_Assert( img );
     cvCreateData( img );
 
     return img;
@@ -2916,12 +2918,21 @@ cvInitImageHeader( IplImage * image, CvSize size, int depth,
     if( !image )
         CV_Error( CV_HeaderIsNull, "null pointer to header" );
 
-    memset( image, 0, sizeof( *image ));
-    image->nSize = sizeof( *image );
+    *image = cvIplImage();
 
     icvGetColorModel( channels, &colorModel, &channelSeq );
-    strncpy( image->colorModel, colorModel, 4 );
-    strncpy( image->channelSeq, channelSeq, 4 );
+    for (int i = 0; i < 4; i++)
+    {
+        image->colorModel[i] = colorModel[i];
+        if (colorModel[i] == 0)
+            break;
+    }
+    for (int i = 0; i < 4; i++)
+    {
+        image->channelSeq[i] = channelSeq[i];
+        if (channelSeq[i] == 0)
+            break;
+    }
 
     if( size.width < 0 || size.height < 0 )
         CV_Error( CV_BadROISize, "Bad input roi" );
@@ -3064,7 +3075,7 @@ cvResetImageROI( IplImage* image )
 CV_IMPL CvRect
 cvGetImageROI( const IplImage* img )
 {
-    CvRect rect;
+    CvRect rect = {0, 0, 0, 0};
     if( !img )
         CV_Error( CV_StsNullPtr, "Null pointer to image" );
 
@@ -3196,69 +3207,48 @@ cvCheckTermCriteria( CvTermCriteria criteria, double default_eps,
 namespace cv
 {
 
-template<> void DefaultDeleter<CvMat>::operator ()(CvMat* obj) const
-{ cvReleaseMat(&obj); }
-
-template<> void DefaultDeleter<IplImage>::operator ()(IplImage* obj) const
-{ cvReleaseImage(&obj); }
-
-template<> void DefaultDeleter<CvMatND>::operator ()(CvMatND* obj) const
-{ cvReleaseMatND(&obj); }
-
-template<> void DefaultDeleter<CvSparseMat>::operator ()(CvSparseMat* obj) const
-{ cvReleaseSparseMat(&obj); }
-
-template<> void DefaultDeleter<CvMemStorage>::operator ()(CvMemStorage* obj) const
-{ cvReleaseMemStorage(&obj); }
-
-template<> void DefaultDeleter<CvFileStorage>::operator ()(CvFileStorage* obj) const
-{ cvReleaseFileStorage(&obj); }
-
-template <typename T> static inline
-void scalarToRawData_(const Scalar& s, T * const buf, const int cn, const int unroll_to)
-{
-    int i = 0;
-    for(; i < cn; i++)
-        buf[i] = saturate_cast<T>(s.val[i]);
-    for(; i < unroll_to; i++)
-        buf[i] = buf[i-cn];
-}
-
-void scalarToRawData(const Scalar& s, void* _buf, int type, int unroll_to)
-{
-    CV_INSTRUMENT_REGION()
-
-    const int depth = CV_MAT_DEPTH(type), cn = CV_MAT_CN(type);
-    CV_Assert(cn <= 4);
-    switch(depth)
-    {
-    case CV_8U:
-        scalarToRawData_<uchar>(s, (uchar*)_buf, cn, unroll_to);
-        break;
-    case CV_8S:
-        scalarToRawData_<schar>(s, (schar*)_buf, cn, unroll_to);
-        break;
-    case CV_16U:
-        scalarToRawData_<ushort>(s, (ushort*)_buf, cn, unroll_to);
-        break;
-    case CV_16S:
-        scalarToRawData_<short>(s, (short*)_buf, cn, unroll_to);
-        break;
-    case CV_32S:
-        scalarToRawData_<int>(s, (int*)_buf, cn, unroll_to);
-        break;
-    case CV_32F:
-        scalarToRawData_<float>(s, (float*)_buf, cn, unroll_to);
-        break;
-    case CV_64F:
-        scalarToRawData_<double>(s, (double*)_buf, cn, unroll_to);
-        break;
-    default:
-        CV_Error(CV_StsUnsupportedFormat,"");
-    }
-}
+void DefaultDeleter<CvMat>::operator ()(CvMat* obj) const { cvReleaseMat(&obj); }
+void DefaultDeleter<IplImage>::operator ()(IplImage* obj) const { cvReleaseImage(&obj); }
+void DefaultDeleter<CvMatND>::operator ()(CvMatND* obj) const { cvReleaseMatND(&obj); }
+void DefaultDeleter<CvSparseMat>::operator ()(CvSparseMat* obj) const { cvReleaseSparseMat(&obj); }
+void DefaultDeleter<CvMemStorage>::operator ()(CvMemStorage* obj) const { cvReleaseMemStorage(&obj); }
 
 } // cv::
 
 
+/* universal functions */
+CV_IMPL void
+cvRelease( void** struct_ptr )
+{
+    if( !struct_ptr )
+        CV_Error( CV_StsNullPtr, "NULL double pointer" );
+
+    if( *struct_ptr )
+    {
+        if( CV_IS_MAT(*struct_ptr) )
+            cvReleaseMat((CvMat**)struct_ptr);
+        else if( CV_IS_IMAGE(*struct_ptr))
+            cvReleaseImage((IplImage**)struct_ptr);
+        else
+            CV_Error( CV_StsError, "Unknown object type" );
+    }
+}
+
+void* cvClone( const void* struct_ptr )
+{
+    void* ptr = 0;
+    if( !struct_ptr )
+        CV_Error( CV_StsNullPtr, "NULL structure pointer" );
+
+    if( CV_IS_MAT(struct_ptr) )
+        ptr = cvCloneMat((const CvMat*)struct_ptr);
+    else if( CV_IS_IMAGE(struct_ptr))
+        ptr = cvCloneImage((const IplImage*)struct_ptr);
+    else
+        CV_Error( CV_StsError, "Unknown object type" );
+    return ptr;
+}
+
+
+#endif  // OPENCV_EXCLUDE_C_API
 /* End of file. */

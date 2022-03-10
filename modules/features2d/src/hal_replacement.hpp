@@ -44,12 +44,15 @@
 
 #include "opencv2/core/hal/interface.h"
 
-#if defined __GNUC__
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wunused-parameter"
-#elif defined _MSC_VER
-#  pragma warning( push )
-#  pragma warning( disable: 4100 )
+#if defined(__clang__)  // clang or MSVC clang
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 //! @addtogroup features2d_hal_interface
@@ -66,7 +69,7 @@
    @param width,height Source image dimensions
    @param type FAST type
 */
-inline int hal_ni_FAST_dense(const uchar* src_data, size_t src_step, uchar* dst_data, size_t dst_step, int width, int height, int type) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+inline int hal_ni_FAST_dense(const uchar* src_data, size_t src_step, uchar* dst_data, size_t dst_step, int width, int height, cv::FastFeatureDetector::DetectorType type) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 //! @cond IGNORED
 #define cv_hal_FAST_dense hal_ni_FAST_dense
@@ -94,7 +97,7 @@ inline int hal_ni_FAST_NMS(const uchar* src_data, size_t src_step, uchar* dst_da
    @param nonmax_suppression Indicates if make nonmaxima suppression or not.
    @param type FAST type
 */
-inline int hal_ni_FAST(const uchar* src_data, size_t src_step, int width, int height, uchar* keypoints_data, size_t* keypoints_count, int threshold, bool nonmax_suppression, int type) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+inline int hal_ni_FAST(const uchar* src_data, size_t src_step, int width, int height, uchar* keypoints_data, size_t* keypoints_count, int threshold, bool nonmax_suppression, int /*cv::FastFeatureDetector::DetectorType*/ type) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 //! @cond IGNORED
 #define cv_hal_FAST hal_ni_FAST
@@ -103,10 +106,12 @@ inline int hal_ni_FAST(const uchar* src_data, size_t src_step, int width, int he
 //! @}
 
 
-#if defined __GNUC__
-#  pragma GCC diagnostic pop
-#elif defined _MSC_VER
-#  pragma warning( pop )
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 #include "custom_hal.hpp"

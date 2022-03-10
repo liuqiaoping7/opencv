@@ -54,7 +54,7 @@ public:
     virtual bool grabFrame() CV_OVERRIDE;
     virtual bool retrieveFrame(int, OutputArray) CV_OVERRIDE;
     virtual bool isOpened() const CV_OVERRIDE;
-    virtual int getCaptureDomain() CV_OVERRIDE { return CAP_ANY; } // Return the type of the capture object: CAP_VFW, etc...
+    virtual int getCaptureDomain() CV_OVERRIDE { return CAP_OPENCV_MJPEG; }
     MotionJpegCapture(const String&);
 
     bool open(const String&);
@@ -116,6 +116,8 @@ double MotionJpegCapture::getProperty(int property) const
     {
         case CAP_PROP_POS_FRAMES:
             return (double)getFramePos();
+        case CAP_PROP_POS_MSEC:
+            return (double)getFramePos() * (1000. / m_fps);
         case CAP_PROP_POS_AVI_RATIO:
             return double(getFramePos())/m_mjpeg_frames.size();
         case CAP_PROP_FRAME_WIDTH:
@@ -146,6 +148,9 @@ bool MotionJpegCapture::grabFrame()
         }
         else
         {
+            if (m_frame_iterator == m_mjpeg_frames.end())
+                return false;
+
             ++m_frame_iterator;
         }
     }
@@ -161,7 +166,7 @@ bool MotionJpegCapture::retrieveFrame(int, OutputArray output_frame)
 
         if(data.size())
         {
-            m_current_frame = imdecode(data, CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_COLOR | IMREAD_IGNORE_ORIENTATION);
+            m_current_frame = imdecode(data, IMREAD_ANYDEPTH | IMREAD_COLOR | IMREAD_IGNORE_ORIENTATION);
         }
 
         m_current_frame.copyTo(output_frame);

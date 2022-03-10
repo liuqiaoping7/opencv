@@ -2,9 +2,8 @@
 // It is subject to the license terms in the LICENSE file found in the top-level directory
 // of this distribution and at http://opencv.org/license.html
 
-
-#include "opencv2/core/mat.hpp"
 #include "precomp.hpp"
+#include "opencv2/core/mat.hpp"
 
 namespace cv {
 
@@ -14,8 +13,8 @@ namespace cv {
 
 Mat _InputArray::getMat_(int i) const
 {
-    int k = kind();
-    int accessFlags = flags & ACCESS_MASK;
+    _InputArray::KindFlag k = kind();
+    AccessFlag accessFlags = flags & ACCESS_MASK;
 
     if( k == MAT )
     {
@@ -33,13 +32,7 @@ Mat _InputArray::getMat_(int i) const
         return m->getMat(accessFlags).row(i);
     }
 
-    if( k == EXPR )
-    {
-        CV_Assert( i < 0 );
-        return (Mat)*((const MatExpr*)obj);
-    }
-
-    if( k == MATX || k == STD_ARRAY )
+    if (k == MATX)
     {
         CV_Assert( i < 0 );
         return Mat(sz, flags, obj);
@@ -132,8 +125,8 @@ Mat _InputArray::getMat_(int i) const
 
 UMat _InputArray::getUMat(int i) const
 {
-    int k = kind();
-    int accessFlags = flags & ACCESS_MASK;
+    _InputArray::KindFlag k = kind();
+    AccessFlag accessFlags = flags & ACCESS_MASK;
 
     if( k == UMAT )
     {
@@ -164,8 +157,8 @@ UMat _InputArray::getUMat(int i) const
 
 void _InputArray::getMatVector(std::vector<Mat>& mv) const
 {
-    int k = kind();
-    int accessFlags = flags & ACCESS_MASK;
+    _InputArray::KindFlag k = kind();
+    AccessFlag accessFlags = flags & ACCESS_MASK;
 
     if( k == MAT )
     {
@@ -179,18 +172,7 @@ void _InputArray::getMatVector(std::vector<Mat>& mv) const
         return;
     }
 
-    if( k == EXPR )
-    {
-        Mat m = *(const MatExpr*)obj;
-        int n = m.size[0];
-        mv.resize(n);
-
-        for( int i = 0; i < n; i++ )
-            mv[i] = m.row(i);
-        return;
-    }
-
-    if( k == MATX || k == STD_ARRAY )
+    if (k == MATX)
     {
         size_t n = sz.height, esz = CV_ELEM_SIZE(flags);
         mv.resize(n);
@@ -272,8 +254,8 @@ void _InputArray::getMatVector(std::vector<Mat>& mv) const
 
 void _InputArray::getUMatVector(std::vector<UMat>& umv) const
 {
-    int k = kind();
-    int accessFlags = flags & ACCESS_MASK;
+    _InputArray::KindFlag k = kind();
+    AccessFlag accessFlags = flags & ACCESS_MASK;
 
     if( k == NONE )
     {
@@ -334,7 +316,8 @@ void _InputArray::getUMatVector(std::vector<UMat>& umv) const
 
 cuda::GpuMat _InputArray::getGpuMat() const
 {
-    int k = kind();
+#ifdef HAVE_CUDA
+    _InputArray::KindFlag k = kind();
 
     if (k == CUDA_GPU_MAT)
     {
@@ -357,18 +340,26 @@ cuda::GpuMat _InputArray::getGpuMat() const
         return cuda::GpuMat();
 
     CV_Error(cv::Error::StsNotImplemented, "getGpuMat is available only for cuda::GpuMat and cuda::HostMem");
+#else
+    CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
 }
 void _InputArray::getGpuMatVector(std::vector<cuda::GpuMat>& gpumv) const
 {
-    int k = kind();
+#ifdef HAVE_CUDA
+    _InputArray::KindFlag k = kind();
     if (k == STD_VECTOR_CUDA_GPU_MAT)
     {
         gpumv = *(std::vector<cuda::GpuMat>*)obj;
     }
+#else
+    CV_UNUSED(gpumv);
+    CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
 }
 ogl::Buffer _InputArray::getOGlBuffer() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     CV_Assert(k == OPENGL_BUFFER);
 
@@ -376,9 +367,14 @@ ogl::Buffer _InputArray::getOGlBuffer() const
     return *gl_buf;
 }
 
-int _InputArray::kind() const
+_InputArray::KindFlag _InputArray::kind() const
 {
-    return flags & KIND_MASK;
+    KindFlag k = flags & KIND_MASK;
+#if CV_VERSION_MAJOR < 5
+    CV_DbgAssert(k != EXPR);
+    CV_DbgAssert(k != STD_ARRAY);
+#endif
+    return k;
 }
 
 int _InputArray::rows(int i) const
@@ -393,18 +389,12 @@ int _InputArray::cols(int i) const
 
 Size _InputArray::size(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
         CV_Assert( i < 0 );
         return ((const Mat*)obj)->size();
-    }
-
-    if( k == EXPR )
-    {
-        CV_Assert( i < 0 );
-        return ((const MatExpr*)obj)->size();
     }
 
     if( k == UMAT )
@@ -413,7 +403,7 @@ Size _InputArray::size(int i) const
         return ((const UMat*)obj)->size();
     }
 
-    if( k == MATX || k == STD_ARRAY )
+    if (k == MATX)
     {
         CV_Assert( i < 0 );
         return sz;
@@ -472,11 +462,15 @@ Size _InputArray::size(int i) const
 
     if (k == STD_VECTOR_CUDA_GPU_MAT)
     {
+#ifdef HAVE_CUDA
         const std::vector<cuda::GpuMat>& vv = *(const std::vector<cuda::GpuMat>*)obj;
         if (i < 0)
             return vv.empty() ? Size() : Size((int)vv.size(), 1);
         CV_Assert(i < (int)vv.size());
         return vv[i].size();
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
 
     if( k == STD_VECTOR_UMAT )
@@ -515,7 +509,8 @@ Size _InputArray::size(int i) const
 
 int _InputArray::sizend(int* arrsz, int i) const
 {
-    int j, d=0, k = kind();
+    int j, d = 0;
+    _InputArray::KindFlag k = kind();
 
     if( k == NONE )
         ;
@@ -569,6 +564,7 @@ int _InputArray::sizend(int* arrsz, int i) const
     }
     else
     {
+        CV_CheckLE(dims(i), 2, "Not supported");
         Size sz2d = size(i);
         d = 2;
         if(arrsz)
@@ -583,7 +579,7 @@ int _InputArray::sizend(int* arrsz, int i) const
 
 bool _InputArray::sameSize(const _InputArray& arr) const
 {
-    int k1 = kind(), k2 = arr.kind();
+    _InputArray::KindFlag k1 = kind(), k2 = arr.kind();
     Size sz1;
 
     if( k1 == MAT )
@@ -617,18 +613,12 @@ bool _InputArray::sameSize(const _InputArray& arr) const
 
 int _InputArray::dims(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
         CV_Assert( i < 0 );
         return ((const Mat*)obj)->dims;
-    }
-
-    if( k == EXPR )
-    {
-        CV_Assert( i < 0 );
-        return ((const MatExpr*)obj)->a.dims;
     }
 
     if( k == UMAT )
@@ -637,7 +627,7 @@ int _InputArray::dims(int i) const
         return ((const UMat*)obj)->dims;
     }
 
-    if( k == MATX || k == STD_ARRAY )
+    if (k == MATX)
     {
         CV_Assert( i < 0 );
         return 2;
@@ -714,7 +704,7 @@ int _InputArray::dims(int i) const
 
 size_t _InputArray::total(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
@@ -763,7 +753,7 @@ size_t _InputArray::total(int i) const
 
 int _InputArray::type(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
         return ((const Mat*)obj)->type();
@@ -771,10 +761,7 @@ int _InputArray::type(int i) const
     if( k == UMAT )
         return ((const UMat*)obj)->type();
 
-    if( k == EXPR )
-        return ((const MatExpr*)obj)->type();
-
-    if( k == MATX || k == STD_VECTOR || k == STD_ARRAY || k == STD_VECTOR_VECTOR || k == STD_BOOL_VECTOR )
+    if( k == MATX || k == STD_VECTOR || k == STD_VECTOR_VECTOR || k == STD_BOOL_VECTOR )
         return CV_MAT_TYPE(flags);
 
     if( k == NONE )
@@ -818,6 +805,7 @@ int _InputArray::type(int i) const
 
     if (k == STD_VECTOR_CUDA_GPU_MAT)
     {
+#ifdef HAVE_CUDA
         const std::vector<cuda::GpuMat>& vv = *(const std::vector<cuda::GpuMat>*)obj;
         if (vv.empty())
         {
@@ -826,6 +814,9 @@ int _InputArray::type(int i) const
         }
         CV_Assert(i < (int)vv.size());
         return vv[i >= 0 ? i : 0].type();
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
 
     if( k == OPENGL_BUFFER )
@@ -852,7 +843,7 @@ int _InputArray::channels(int i) const
 
 bool _InputArray::empty() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
         return ((const Mat*)obj)->empty();
@@ -860,10 +851,7 @@ bool _InputArray::empty() const
     if( k == UMAT )
         return ((const UMat*)obj)->empty();
 
-    if( k == EXPR )
-        return false;
-
-    if( k == MATX || k == STD_ARRAY )
+    if (k == MATX)
         return false;
 
     if( k == STD_VECTOR )
@@ -924,7 +912,7 @@ bool _InputArray::empty() const
 
 bool _InputArray::isContinuous(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
         return i < 0 ? ((const Mat*)obj)->isContinuous() : true;
@@ -932,28 +920,28 @@ bool _InputArray::isContinuous(int i) const
     if( k == UMAT )
         return i < 0 ? ((const UMat*)obj)->isContinuous() : true;
 
-    if( k == EXPR || k == MATX || k == STD_VECTOR || k == STD_ARRAY ||
+    if( k == MATX || k == STD_VECTOR ||
         k == NONE || k == STD_VECTOR_VECTOR || k == STD_BOOL_VECTOR )
         return true;
 
     if( k == STD_VECTOR_MAT )
     {
         const std::vector<Mat>& vv = *(const std::vector<Mat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].isContinuous();
     }
 
     if( k == STD_ARRAY_MAT )
     {
         const Mat* vv = (const Mat*)obj;
-        CV_Assert(i > 0 && i < sz.height);
+        CV_Assert(i >= 0 && i < sz.height);
         return vv[i].isContinuous();
     }
 
     if( k == STD_VECTOR_UMAT )
     {
         const std::vector<UMat>& vv = *(const std::vector<UMat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].isContinuous();
     }
 
@@ -965,7 +953,7 @@ bool _InputArray::isContinuous(int i) const
 
 bool _InputArray::isSubmatrix(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
         return i < 0 ? ((const Mat*)obj)->isSubmatrix() : false;
@@ -973,28 +961,28 @@ bool _InputArray::isSubmatrix(int i) const
     if( k == UMAT )
         return i < 0 ? ((const UMat*)obj)->isSubmatrix() : false;
 
-    if( k == EXPR || k == MATX || k == STD_VECTOR || k == STD_ARRAY ||
+    if( k == MATX || k == STD_VECTOR ||
         k == NONE || k == STD_VECTOR_VECTOR || k == STD_BOOL_VECTOR )
         return false;
 
     if( k == STD_VECTOR_MAT )
     {
         const std::vector<Mat>& vv = *(const std::vector<Mat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].isSubmatrix();
     }
 
     if( k == STD_ARRAY_MAT )
     {
         const Mat* vv = (const Mat*)obj;
-        CV_Assert(i < sz.height);
+        CV_Assert(i >= 0 && i < sz.height);
         return vv[i].isSubmatrix();
     }
 
     if( k == STD_VECTOR_UMAT )
     {
         const std::vector<UMat>& vv = *(const std::vector<UMat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].isSubmatrix();
     }
 
@@ -1003,7 +991,7 @@ bool _InputArray::isSubmatrix(int i) const
 
 size_t _InputArray::offset(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
@@ -1018,16 +1006,14 @@ size_t _InputArray::offset(int i) const
         return ((const UMat*)obj)->offset;
     }
 
-    if( k == EXPR || k == MATX || k == STD_VECTOR || k == STD_ARRAY ||
+    if( k == MATX || k == STD_VECTOR ||
         k == NONE || k == STD_VECTOR_VECTOR || k == STD_BOOL_VECTOR )
         return 0;
 
     if( k == STD_VECTOR_MAT )
     {
         const std::vector<Mat>& vv = *(const std::vector<Mat>*)obj;
-        if( i < 0 )
-            return 1;
-        CV_Assert( i < (int)vv.size() );
+        CV_Assert( i >= 0 && i < (int)vv.size() );
 
         return (size_t)(vv[i].ptr() - vv[i].datastart);
     }
@@ -1035,16 +1021,14 @@ size_t _InputArray::offset(int i) const
     if( k == STD_ARRAY_MAT )
     {
         const Mat* vv = (const Mat*)obj;
-        if( i < 0 )
-            return 1;
-        CV_Assert( i < sz.height );
+        CV_Assert( i >= 0 && i < sz.height );
         return (size_t)(vv[i].ptr() - vv[i].datastart);
     }
 
     if( k == STD_VECTOR_UMAT )
     {
         const std::vector<UMat>& vv = *(const std::vector<UMat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].offset;
     }
 
@@ -1058,7 +1042,7 @@ size_t _InputArray::offset(int i) const
     if (k == STD_VECTOR_CUDA_GPU_MAT)
     {
         const std::vector<cuda::GpuMat>& vv = *(const std::vector<cuda::GpuMat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return (size_t)(vv[i].data - vv[i].datastart);
     }
 
@@ -1067,7 +1051,7 @@ size_t _InputArray::offset(int i) const
 
 size_t _InputArray::step(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
@@ -1081,32 +1065,28 @@ size_t _InputArray::step(int i) const
         return ((const UMat*)obj)->step;
     }
 
-    if( k == EXPR || k == MATX || k == STD_VECTOR || k == STD_ARRAY ||
+    if( k == MATX || k == STD_VECTOR ||
         k == NONE || k == STD_VECTOR_VECTOR || k == STD_BOOL_VECTOR )
         return 0;
 
     if( k == STD_VECTOR_MAT )
     {
         const std::vector<Mat>& vv = *(const std::vector<Mat>*)obj;
-        if( i < 0 )
-            return 1;
-        CV_Assert( i < (int)vv.size() );
+        CV_Assert( i >= 0 && i < (int)vv.size() );
         return vv[i].step;
     }
 
     if( k == STD_ARRAY_MAT )
     {
         const Mat* vv = (const Mat*)obj;
-        if( i < 0 )
-            return 1;
-        CV_Assert( i < sz.height );
+        CV_Assert( i >= 0 && i < sz.height );
         return vv[i].step;
     }
 
     if( k == STD_VECTOR_UMAT )
     {
         const std::vector<UMat>& vv = *(const std::vector<UMat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].step;
     }
 
@@ -1118,7 +1098,7 @@ size_t _InputArray::step(int i) const
     if (k == STD_VECTOR_CUDA_GPU_MAT)
     {
         const std::vector<cuda::GpuMat>& vv = *(const std::vector<cuda::GpuMat>*)obj;
-        CV_Assert((size_t)i < vv.size());
+        CV_Assert(i >= 0 && (size_t)i < vv.size());
         return vv[i].step;
     }
 
@@ -1127,42 +1107,42 @@ size_t _InputArray::step(int i) const
 
 void _InputArray::copyTo(const _OutputArray& arr) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == NONE )
         arr.release();
-    else if( k == MAT || k == MATX || k == STD_VECTOR || k == STD_ARRAY || k == STD_BOOL_VECTOR )
+    else if( k == MAT || k == MATX || k == STD_VECTOR || k == STD_BOOL_VECTOR )
     {
         Mat m = getMat();
         m.copyTo(arr);
     }
-    else if( k == EXPR )
-    {
-        const MatExpr& e = *((MatExpr*)obj);
-        if( arr.kind() == MAT )
-            arr.getMatRef() = e;
-        else
-            Mat(e).copyTo(arr);
-    }
     else if( k == UMAT )
         ((UMat*)obj)->copyTo(arr);
+#ifdef HAVE_CUDA
+    else if (k == CUDA_GPU_MAT)
+        ((cuda::GpuMat*)obj)->copyTo(arr);
+#endif
     else
         CV_Error(Error::StsNotImplemented, "");
 }
 
 void _InputArray::copyTo(const _OutputArray& arr, const _InputArray & mask) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == NONE )
         arr.release();
-    else if( k == MAT || k == MATX || k == STD_VECTOR || k == STD_ARRAY || k == STD_BOOL_VECTOR )
+    else if( k == MAT || k == MATX || k == STD_VECTOR || k == STD_BOOL_VECTOR )
     {
         Mat m = getMat();
         m.copyTo(arr, mask);
     }
     else if( k == UMAT )
         ((UMat*)obj)->copyTo(arr, mask);
+#ifdef HAVE_CUDA
+    else if (k == CUDA_GPU_MAT)
+        ((cuda::GpuMat*)obj)->copyTo(arr, mask);
+#endif
     else
         CV_Error(Error::StsNotImplemented, "");
 }
@@ -1177,9 +1157,9 @@ bool _OutputArray::fixedType() const
     return (flags & FIXED_TYPE) == FIXED_TYPE;
 }
 
-void _OutputArray::create(Size _sz, int mtype, int i, bool allowTransposed, int fixedDepthMask) const
+void _OutputArray::create(Size _sz, int mtype, int i, bool allowTransposed, _OutputArray::DepthMask fixedDepthMask) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if( k == MAT && i < 0 && !allowTransposed && fixedDepthMask == 0 )
     {
         CV_Assert(!fixedSize() || ((Mat*)obj)->size.operator()() == _sz);
@@ -1198,30 +1178,42 @@ void _OutputArray::create(Size _sz, int mtype, int i, bool allowTransposed, int 
     {
         CV_Assert(!fixedSize() || ((cuda::GpuMat*)obj)->size() == _sz);
         CV_Assert(!fixedType() || ((cuda::GpuMat*)obj)->type() == mtype);
+#ifdef HAVE_CUDA
         ((cuda::GpuMat*)obj)->create(_sz, mtype);
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
     if( k == OPENGL_BUFFER && i < 0 && !allowTransposed && fixedDepthMask == 0 )
     {
         CV_Assert(!fixedSize() || ((ogl::Buffer*)obj)->size() == _sz);
         CV_Assert(!fixedType() || ((ogl::Buffer*)obj)->type() == mtype);
+#ifdef HAVE_OPENGL
         ((ogl::Buffer*)obj)->create(_sz, mtype);
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "OpenGL support is not enabled in this OpenCV build (missing HAVE_OPENGL)");
+#endif
     }
     if( k == CUDA_HOST_MEM && i < 0 && !allowTransposed && fixedDepthMask == 0 )
     {
         CV_Assert(!fixedSize() || ((cuda::HostMem*)obj)->size() == _sz);
         CV_Assert(!fixedType() || ((cuda::HostMem*)obj)->type() == mtype);
+#ifdef HAVE_CUDA
         ((cuda::HostMem*)obj)->create(_sz, mtype);
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
     int sizes[] = {_sz.height, _sz.width};
     create(2, sizes, mtype, i, allowTransposed, fixedDepthMask);
 }
 
-void _OutputArray::create(int _rows, int _cols, int mtype, int i, bool allowTransposed, int fixedDepthMask) const
+void _OutputArray::create(int _rows, int _cols, int mtype, int i, bool allowTransposed, _OutputArray::DepthMask fixedDepthMask) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if( k == MAT && i < 0 && !allowTransposed && fixedDepthMask == 0 )
     {
         CV_Assert(!fixedSize() || ((Mat*)obj)->size.operator()() == Size(_cols, _rows));
@@ -1240,29 +1232,41 @@ void _OutputArray::create(int _rows, int _cols, int mtype, int i, bool allowTran
     {
         CV_Assert(!fixedSize() || ((cuda::GpuMat*)obj)->size() == Size(_cols, _rows));
         CV_Assert(!fixedType() || ((cuda::GpuMat*)obj)->type() == mtype);
+#ifdef HAVE_CUDA
         ((cuda::GpuMat*)obj)->create(_rows, _cols, mtype);
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
     if( k == OPENGL_BUFFER && i < 0 && !allowTransposed && fixedDepthMask == 0 )
     {
         CV_Assert(!fixedSize() || ((ogl::Buffer*)obj)->size() == Size(_cols, _rows));
         CV_Assert(!fixedType() || ((ogl::Buffer*)obj)->type() == mtype);
+#ifdef HAVE_OPENGL
         ((ogl::Buffer*)obj)->create(_rows, _cols, mtype);
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "OpenGL support is not enabled in this OpenCV build (missing HAVE_OPENGL)");
+#endif
     }
     if( k == CUDA_HOST_MEM && i < 0 && !allowTransposed && fixedDepthMask == 0 )
     {
         CV_Assert(!fixedSize() || ((cuda::HostMem*)obj)->size() == Size(_cols, _rows));
         CV_Assert(!fixedType() || ((cuda::HostMem*)obj)->type() == mtype);
+#ifdef HAVE_CUDA
         ((cuda::HostMem*)obj)->create(_rows, _cols, mtype);
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
     int sizes[] = {_rows, _cols};
     create(2, sizes, mtype, i, allowTransposed, fixedDepthMask);
 }
 
 void _OutputArray::create(int d, const int* sizes, int mtype, int i,
-                          bool allowTransposed, int fixedDepthMask) const
+                          bool allowTransposed, _OutputArray::DepthMask fixedDepthMask) const
 {
     int sizebuf[2];
     if(d == 1)
@@ -1272,24 +1276,20 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
         sizebuf[1] = 1;
         sizes = sizebuf;
     }
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     mtype = CV_MAT_TYPE(mtype);
 
     if( k == MAT )
     {
         CV_Assert( i < 0 );
         Mat& m = *(Mat*)obj;
-        if( allowTransposed )
+        CV_Assert(!(m.empty() && fixedType() && fixedSize()) && "Can't reallocate empty Mat with locked layout (probably due to misused 'const' modifier)");
+        if (allowTransposed && !m.empty() &&
+            d == 2 && m.dims == 2 &&
+            m.type() == mtype && m.rows == sizes[1] && m.cols == sizes[0] &&
+            m.isContinuous())
         {
-            if( !m.isContinuous() )
-            {
-                CV_Assert(!fixedType() && !fixedSize());
-                m.release();
-            }
-
-            if( d == 2 && m.dims == 2 && m.data &&
-                m.type() == mtype && m.rows == sizes[1] && m.cols == sizes[0] )
-                return;
+            return;
         }
 
         if(fixedType())
@@ -1297,13 +1297,13 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
             if(CV_MAT_CN(mtype) == m.channels() && ((1 << CV_MAT_TYPE(flags)) & fixedDepthMask) != 0 )
                 mtype = m.type();
             else
-                CV_Assert(CV_MAT_TYPE(mtype) == m.type());
+                CV_CheckTypeEQ(m.type(), CV_MAT_TYPE(mtype), "Can't reallocate Mat with locked type (probably due to misused 'const' modifier)");
         }
         if(fixedSize())
         {
-            CV_Assert(m.dims == d);
+            CV_CheckEQ(m.dims, d, "Can't reallocate Mat with locked size (probably due to misused 'const' modifier)");
             for(int j = 0; j < d; ++j)
-                CV_Assert(m.size[j] == sizes[j]);
+                CV_CheckEQ(m.size[j], sizes[j], "Can't reallocate Mat with locked size (probably due to misused 'const' modifier)");
         }
         m.create(d, sizes, mtype);
         return;
@@ -1313,17 +1313,13 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
     {
         CV_Assert( i < 0 );
         UMat& m = *(UMat*)obj;
-        if( allowTransposed )
+        CV_Assert(!(m.empty() && fixedType() && fixedSize()) && "Can't reallocate empty UMat with locked layout (probably due to misused 'const' modifier)");
+        if (allowTransposed && !m.empty() &&
+            d == 2 && m.dims == 2 &&
+            m.type() == mtype && m.rows == sizes[1] && m.cols == sizes[0] &&
+            m.isContinuous())
         {
-            if( !m.isContinuous() )
-            {
-                CV_Assert(!fixedType() && !fixedSize());
-                m.release();
-            }
-
-            if( d == 2 && m.dims == 2 && !m.empty() &&
-                m.type() == mtype && m.rows == sizes[1] && m.cols == sizes[0] )
-                return;
+            return;
         }
 
         if(fixedType())
@@ -1331,13 +1327,13 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
             if(CV_MAT_CN(mtype) == m.channels() && ((1 << CV_MAT_TYPE(flags)) & fixedDepthMask) != 0 )
                 mtype = m.type();
             else
-                CV_Assert(CV_MAT_TYPE(mtype) == m.type());
+                CV_CheckTypeEQ(m.type(), CV_MAT_TYPE(mtype), "Can't reallocate UMat with locked type (probably due to misused 'const' modifier)");
         }
         if(fixedSize())
         {
-            CV_Assert(m.dims == d);
+            CV_CheckEQ(m.dims, d, "Can't reallocate UMat with locked size (probably due to misused 'const' modifier)");
             for(int j = 0; j < d; ++j)
-                CV_Assert(m.size[j] == sizes[j]);
+                CV_CheckEQ(m.size[j], sizes[j], "Can't reallocate UMat with locked size (probably due to misused 'const' modifier)");
         }
         m.create(d, sizes, mtype);
         return;
@@ -1348,16 +1344,27 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
         CV_Assert( i < 0 );
         int type0 = CV_MAT_TYPE(flags);
         CV_Assert( mtype == type0 || (CV_MAT_CN(mtype) == 1 && ((1 << type0) & fixedDepthMask) != 0) );
-        CV_Assert( d == 2 && ((sizes[0] == sz.height && sizes[1] == sz.width) ||
-                                 (allowTransposed && sizes[0] == sz.width && sizes[1] == sz.height)));
-        return;
-    }
-
-    if( k == STD_ARRAY )
-    {
-        int type0 = CV_MAT_TYPE(flags);
-        CV_Assert( mtype == type0 || (CV_MAT_CN(mtype) == 1 && ((1 << type0) & fixedDepthMask) != 0) );
-        CV_Assert( d == 2 && sz.area() == sizes[0]*sizes[1]);
+        CV_CheckLE(d, 2, "");
+        Size requested_size(d == 2 ? sizes[1] : 1, d >= 1 ? sizes[0] : 1);
+        if (sz.width == 1 || sz.height == 1)
+        {
+            // NB: 1D arrays assume allowTransposed=true (see #4159)
+            int total_1d = std::max(sz.width, sz.height);
+            CV_Check(requested_size, std::max(requested_size.width, requested_size.height) == total_1d, "");
+        }
+        else
+        {
+            if (!allowTransposed)
+            {
+                CV_CheckEQ(requested_size, sz, "");
+            }
+            else
+            {
+                CV_Check(requested_size,
+                        (requested_size == sz || (requested_size.height == sz.width && requested_size.width == sz.height)),
+                        "");
+            }
+        }
         return;
     }
 
@@ -1413,8 +1420,14 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
         case 16:
             ((std::vector<Vec4i>*)v)->resize(len);
             break;
+        case 20:
+            ((std::vector<Vec<int, 5> >*)v)->resize(len);
+            break;
         case 24:
             ((std::vector<Vec6i>*)v)->resize(len);
+            break;
+        case 28:
+            ((std::vector<Vec<int, 7> >*)v)->resize(len);
             break;
         case 32:
             ((std::vector<Vec8i>*)v)->resize(len);
@@ -1422,8 +1435,23 @@ void _OutputArray::create(int d, const int* sizes, int mtype, int i,
         case 36:
             ((std::vector<Vec<int, 9> >*)v)->resize(len);
             break;
+        case 40:
+            ((std::vector<Vec<int, 10> >*)v)->resize(len);
+            break;
+        case 44:
+            ((std::vector<Vec<int, 11> >*)v)->resize(len);
+            break;
         case 48:
             ((std::vector<Vec<int, 12> >*)v)->resize(len);
+            break;
+        case 52:
+            ((std::vector<Vec<int, 13> >*)v)->resize(len);
+            break;
+        case 56:
+            ((std::vector<Vec<int, 14> >*)v)->resize(len);
+            break;
+        case 60:
+            ((std::vector<Vec<int, 15> >*)v)->resize(len);
             break;
         case 64:
             ((std::vector<Vec<int, 16> >*)v)->resize(len);
@@ -1638,7 +1666,7 @@ void _OutputArray::release() const
 {
     CV_Assert(!fixedSize());
 
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
@@ -1654,20 +1682,32 @@ void _OutputArray::release() const
 
     if( k == CUDA_GPU_MAT )
     {
+#ifdef HAVE_CUDA
         ((cuda::GpuMat*)obj)->release();
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
 
     if( k == CUDA_HOST_MEM )
     {
+#ifdef HAVE_CUDA
         ((cuda::HostMem*)obj)->release();
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
 
     if( k == OPENGL_BUFFER )
     {
+#ifdef HAVE_OPENGL
         ((ogl::Buffer*)obj)->release();
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "OpenGL support is not enabled in this OpenCV build (missing HAVE_OPENGL)");
+#endif
     }
 
     if( k == NONE )
@@ -1698,15 +1738,19 @@ void _OutputArray::release() const
     }
     if (k == STD_VECTOR_CUDA_GPU_MAT)
     {
+#ifdef HAVE_CUDA
         ((std::vector<cuda::GpuMat>*)obj)->clear();
         return;
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
     CV_Error(Error::StsNotImplemented, "Unknown/unsupported array type");
 }
 
 void _OutputArray::clear() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == MAT )
     {
@@ -1725,7 +1769,7 @@ bool _OutputArray::needed() const
 
 Mat& _OutputArray::getMatRef(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if( i < 0 )
     {
         CV_Assert( k == MAT );
@@ -1750,7 +1794,7 @@ Mat& _OutputArray::getMatRef(int i) const
 
 UMat& _OutputArray::getUMatRef(int i) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if( i < 0 )
     {
         CV_Assert( k == UMAT );
@@ -1767,38 +1811,38 @@ UMat& _OutputArray::getUMatRef(int i) const
 
 cuda::GpuMat& _OutputArray::getGpuMatRef() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     CV_Assert( k == CUDA_GPU_MAT );
     return *(cuda::GpuMat*)obj;
 }
 std::vector<cuda::GpuMat>& _OutputArray::getGpuMatVecRef() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     CV_Assert(k == STD_VECTOR_CUDA_GPU_MAT);
     return *(std::vector<cuda::GpuMat>*)obj;
 }
 
 ogl::Buffer& _OutputArray::getOGlBufferRef() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     CV_Assert( k == OPENGL_BUFFER );
     return *(ogl::Buffer*)obj;
 }
 
 cuda::HostMem& _OutputArray::getHostMemRef() const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     CV_Assert( k == CUDA_HOST_MEM );
     return *(cuda::HostMem*)obj;
 }
 
 void _OutputArray::setTo(const _InputArray& arr, const _InputArray & mask) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
 
     if( k == NONE )
         ;
-    else if( k == MAT || k == MATX || k == STD_VECTOR || k == STD_ARRAY )
+    else if (k == MAT || k == MATX || k == STD_VECTOR)
     {
         Mat m = getMat();
         m.setTo(arr, mask);
@@ -1807,9 +1851,13 @@ void _OutputArray::setTo(const _InputArray& arr, const _InputArray & mask) const
         ((UMat*)obj)->setTo(arr, mask);
     else if( k == CUDA_GPU_MAT )
     {
+#ifdef HAVE_CUDA
         Mat value = arr.getMat();
         CV_Assert( checkScalar(value, type(), arr.kind(), _InputArray::CUDA_GPU_MAT) );
         ((cuda::GpuMat*)obj)->setTo(Scalar(Vec<double, 4>(value.ptr<double>())), mask);
+#else
+        CV_Error(Error::StsNotImplemented, "CUDA support is not enabled in this OpenCV build (missing HAVE_CUDA)");
+#endif
     }
     else
         CV_Error(Error::StsNotImplemented, "");
@@ -1818,7 +1866,7 @@ void _OutputArray::setTo(const _InputArray& arr, const _InputArray & mask) const
 
 void _OutputArray::assign(const UMat& u) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if (k == UMAT)
     {
         *(UMat*)obj = u;
@@ -1840,7 +1888,7 @@ void _OutputArray::assign(const UMat& u) const
 
 void _OutputArray::assign(const Mat& m) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if (k == UMAT)
     {
         m.copyTo(*(UMat*)obj); // TODO check m.getUMat()
@@ -1860,9 +1908,79 @@ void _OutputArray::assign(const Mat& m) const
 }
 
 
+void _OutputArray::move(UMat& u) const
+{
+    if (fixedSize())
+    {
+        // TODO Performance warning
+        assign(u);
+        return;
+    }
+    int k = kind();
+    if (k == UMAT)
+    {
+#ifdef CV_CXX11
+        *(UMat*)obj = std::move(u);
+#else
+        *(UMat*)obj = u;
+        u.release();
+#endif
+    }
+    else if (k == MAT)
+    {
+        u.copyTo(*(Mat*)obj); // TODO check u.getMat()
+        u.release();
+    }
+    else if (k == MATX)
+    {
+        u.copyTo(getMat()); // TODO check u.getMat()
+        u.release();
+    }
+    else
+    {
+        CV_Error(Error::StsNotImplemented, "");
+    }
+}
+
+
+void _OutputArray::move(Mat& m) const
+{
+    if (fixedSize())
+    {
+        // TODO Performance warning
+        assign(m);
+        return;
+    }
+    int k = kind();
+    if (k == UMAT)
+    {
+        m.copyTo(*(UMat*)obj); // TODO check m.getUMat()
+        m.release();
+    }
+    else if (k == MAT)
+    {
+#ifdef CV_CXX11
+        *(Mat*)obj = std::move(m);
+#else
+        *(Mat*)obj = m;
+        m.release();
+#endif
+    }
+    else if (k == MATX)
+    {
+        m.copyTo(getMat());
+        m.release();
+    }
+    else
+    {
+        CV_Error(Error::StsNotImplemented, "");
+    }
+}
+
+
 void _OutputArray::assign(const std::vector<UMat>& v) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if (k == STD_VECTOR_UMAT)
     {
         std::vector<UMat>& this_v = *(std::vector<UMat>*)obj;
@@ -1900,7 +2018,7 @@ void _OutputArray::assign(const std::vector<UMat>& v) const
 
 void _OutputArray::assign(const std::vector<Mat>& v) const
 {
-    int k = kind();
+    _InputArray::KindFlag k = kind();
     if (k == STD_VECTOR_UMAT)
     {
         std::vector<UMat>& this_v = *(std::vector<UMat>*)obj;

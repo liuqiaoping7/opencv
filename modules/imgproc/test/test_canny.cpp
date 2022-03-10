@@ -75,8 +75,6 @@ CV_CannyTest::CV_CannyTest(bool custom_deriv)
     aperture_size = 0;
     use_true_gradient = false;
     threshold1 = threshold2 = 0;
-
-    test_cpp = false;
     test_custom_deriv = custom_deriv;
 
     const char imgPath[] = "shared/fruits.png";
@@ -157,11 +155,6 @@ void CV_CannyTest::run_func()
         cvtest::filter2D(src, dx, CV_16S, dxkernel, anchor, 0, BORDER_REPLICATE);
         cvtest::filter2D(src, dy, CV_16S, dykernel, anchor, 0, BORDER_REPLICATE);
         cv::Canny(dx, dy, _out, threshold1, threshold2, use_true_gradient);
-    }
-    else if(!test_cpp)
-    {
-        cvCanny( test_array[INPUT][0], test_array[OUTPUT][0], threshold1, threshold2,
-                aperture_size + (use_true_gradient ? CV_CANNY_L2_GRADIENT : 0));
     }
     else
     {
@@ -256,7 +249,7 @@ test_Canny( const Mat& src, Mat& dst,
             }
             else
             {
-                assert( fabs(tg) > tan_3pi_8 );
+                CV_Assert( fabs(tg) > tan_3pi_8 );
                 x1 = x2 = x; y1 = y + 1; y2 = y - 1;
             }
 
@@ -364,7 +357,7 @@ PARAM_TEST_CASE(CannyVX, ImagePath, ApertureSize, L2gradient)
     void loadImage()
     {
         src = cv::imread(cvtest::TS::ptr()->get_data_path() + imgPath, IMREAD_GRAYSCALE);
-        ASSERT_FALSE(src.empty()) << "cann't load image: " << imgPath;
+        ASSERT_FALSE(src.empty()) << "can't load image: " << imgPath;
     }
 };
 

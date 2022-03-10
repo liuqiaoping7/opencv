@@ -1,5 +1,3 @@
-/* $Id: tif_compress.c,v 1.25 2016-10-25 20:04:22 erouault Exp $ */
-
 /*
  * Copyright (c) 1988-1997 Sam Leffler
  * Copyright (c) 1991-1997 Silicon Graphics, Inc.
@@ -266,7 +264,7 @@ TIFFGetConfiguredCODECs()
 			return NULL;
 		}
 		codecs = new_codecs;
-		_TIFFmemcpy(codecs + i - 1, cd, sizeof(TIFFCodec));
+		_TIFFmemcpy(codecs + i - 1, cd->info, sizeof(TIFFCodec));
 		i++;
 	}
 	for (c = _TIFFBuiltinCODECS; c->name; c++) {

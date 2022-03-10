@@ -73,6 +73,7 @@ public:
 
     bool train( const Ptr<TrainData>& data, int flags )
     {
+        CV_Assert(!data.empty());
         Mat new_samples = data->getTrainSamples(ROW_SAMPLE);
         Mat new_responses;
         data->getTrainResponses().convertTo(new_responses, CV_32F);
@@ -98,7 +99,7 @@ public:
         return true;
     }
 
-    virtual void doTrain(InputArray points) { (void)points; }
+    virtual void doTrain(InputArray points) { CV_UNUSED(points); }
 
     void clear()
     {
@@ -140,16 +141,15 @@ public:
     String getModelName() const CV_OVERRIDE { return NAME_BRUTE_FORCE; }
     int getType() const CV_OVERRIDE { return ml::KNearest::BRUTE_FORCE; }
 
-    void findNearestCore( const Mat& _samples, int k0, const Range& range,
+    void findNearestCore( const Mat& _samples, int k, const Range& range,
                           Mat* results, Mat* neighbor_responses,
                           Mat* dists, float* presult ) const
     {
         int testidx, baseidx, i, j, d = samples.cols, nsamples = samples.rows;
         int testcount = range.end - range.start;
-        int k = std::min(k0, nsamples);
 
         AutoBuffer<float> buf(testcount*k*2);
-        float* dbuf = buf;
+        float* dbuf = buf.data();
         float* rbuf = dbuf + testcount*k;
 
         const float* rptr = responses.ptr<float>();
@@ -215,7 +215,7 @@ public:
                 float* nr = neighbor_responses->ptr<float>(testidx + range.start);
                 for( j = 0; j < k; j++ )
                     nr[j] = rbuf[testidx*k + j];
-                for( ; j < k0; j++ )
+                for( ; j < k; j++ )
                     nr[j] = 0.f;
             }
 
@@ -224,7 +224,7 @@ public:
                 float* dptr = dists->ptr<float>(testidx + range.start);
                 for( j = 0; j < k; j++ )
                     dptr[j] = dbuf[testidx*k + j];
-                for( ; j < k0; j++ )
+                for( ; j < k; j++ )
                     dptr[j] = 0.f;
             }
 
@@ -307,6 +307,7 @@ public:
     {
         float result = 0.f;
         CV_Assert( 0 < k );
+        k = std::min(k, samples.rows);
 
         Mat test_samples = _samples.getMat();
         CV_Assert( test_samples.type() == CV_32F && test_samples.cols == samples.cols );
@@ -363,6 +364,7 @@ public:
     {
         float result = 0.f;
         CV_Assert( 0 < k );
+        k = std::min(k, samples.rows);
 
         Mat test_samples = _samples.getMat();
         CV_Assert( test_samples.type() == CV_32F && test_samples.cols == samples.cols );
@@ -379,36 +381,23 @@ public:
         Mat res, nr, d;
         if( _results.needed() )
         {
-            _results.create(testcount, 1, CV_32F);
             res = _results.getMat();
         }
         if( _neighborResponses.needed() )
         {
-            _neighborResponses.create(testcount, k, CV_32F);
             nr = _neighborResponses.getMat();
         }
         if( _dists.needed() )
         {
-            _dists.create(testcount, k, CV_32F);
             d = _dists.getMat();
         }
 
         for (int i=0; i<test_samples.rows; ++i)
         {
             Mat _res, _nr, _d;
-            if (res.rows>i)
-            {
-                _res = res.row(i);
-            }
-            if (nr.rows>i)
-            {
-                _nr = nr.row(i);
-            }
-            if (d.rows>i)
-            {
-                _d = d.row(i);
-            }
             tr.findNearest(test_samples.row(i), k, Emax, _res, _nr, _d, noArray());
+            res.push_back(_res.t());
+            _results.assign(res);
         }
 
         return result; // currently always 0
@@ -493,6 +482,7 @@ public:
 
     bool train( const Ptr<TrainData>& data, int flags ) CV_OVERRIDE
     {
+        CV_Assert(!data.empty());
         return impl->train(data, flags);
     }
 
@@ -512,6 +502,17 @@ protected:
 Ptr<KNearest> KNearest::create()
 {
     return makePtr<KNearestImpl>();
+}
+
+Ptr<KNearest> KNearest::load(const String& filepath)
+{
+    FileStorage fs;
+    fs.open(filepath, FileStorage::READ);
+
+    Ptr<KNearest> knearest = makePtr<KNearestImpl>();
+
+    ((KNearestImpl*)knearest.get())->read(fs.getFirstTopLevelNode());
+    return knearest;
 }
 
 }

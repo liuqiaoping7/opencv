@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.5)
 
 # load settings in case of "try compile"
 set(TOOLCHAIN_CONFIG_FILE "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/toolchain.config.cmake")
@@ -55,8 +55,6 @@ else()
     unset(__variableNames)
   endmacro()
 endif() # IN_TRY_COMPILE
-
-set(CMAKE_SKIP_RPATH TRUE)
 
 if(NOT CMAKE_FIND_ROOT_PATH_MODE_LIBRARY)
   set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

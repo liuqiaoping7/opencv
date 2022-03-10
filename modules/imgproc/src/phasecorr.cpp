@@ -1,3 +1,7 @@
+// This file is a part of OpenCV project.
+// See opencv/LICENSE and http://opencv.org/license.html for the actual licensing terms.
+// See also opencv/doc/LICENSE_CHANGE_NOTICE.txt. Below is the original license:
+
 /*********************************************************************
  * Software License Agreement (BSD License)
  *
@@ -78,9 +82,9 @@ static void magSpectrums( InputArray _src, OutputArray _dst)
             {
                 if( k == 1 )
                     dataSrc += cols - 1, dataDst += cols - 1;
-                dataDst[0] = dataSrc[0]*dataSrc[0];
+                dataDst[0] = (float)std::abs(dataSrc[0]);
                 if( rows % 2 == 0 )
-                    dataDst[(rows-1)*stepDst] = dataSrc[(rows-1)*stepSrc]*dataSrc[(rows-1)*stepSrc];
+                    dataDst[(rows-1)*stepDst] = (float)std::abs(dataSrc[(rows-1)*stepSrc]);
 
                 for( j = 1; j <= rows - 2; j += 2 )
                 {
@@ -97,9 +101,9 @@ static void magSpectrums( InputArray _src, OutputArray _dst)
         {
             if( is_1d && cn == 1 )
             {
-                dataDst[0] = dataSrc[0]*dataSrc[0];
+                dataDst[0] = (float)std::abs(dataSrc[0]);
                 if( cols % 2 == 0 )
-                    dataDst[j1] = dataSrc[j1]*dataSrc[j1];
+                    dataDst[j1] = (float)std::abs(dataSrc[j1]);
             }
 
             for( j = j0; j < j1; j += 2 )
@@ -122,9 +126,9 @@ static void magSpectrums( InputArray _src, OutputArray _dst)
             {
                 if( k == 1 )
                     dataSrc += cols - 1, dataDst += cols - 1;
-                dataDst[0] = dataSrc[0]*dataSrc[0];
+                dataDst[0] = std::abs(dataSrc[0]);
                 if( rows % 2 == 0 )
-                    dataDst[(rows-1)*stepDst] = dataSrc[(rows-1)*stepSrc]*dataSrc[(rows-1)*stepSrc];
+                    dataDst[(rows-1)*stepDst] = std::abs(dataSrc[(rows-1)*stepSrc]);
 
                 for( j = 1; j <= rows - 2; j += 2 )
                 {
@@ -141,9 +145,9 @@ static void magSpectrums( InputArray _src, OutputArray _dst)
         {
             if( is_1d && cn == 1 )
             {
-                dataDst[0] = dataSrc[0]*dataSrc[0];
+                dataDst[0] = std::abs(dataSrc[0]);
                 if( cols % 2 == 0 )
-                    dataDst[j1] = dataSrc[j1]*dataSrc[j1];
+                    dataDst[j1] = std::abs(dataSrc[j1]);
             }
 
             for( j = j0; j < j1; j += 2 )
@@ -154,7 +158,7 @@ static void magSpectrums( InputArray _src, OutputArray _dst)
     }
 }
 
-static void divSpectrums( InputArray _srcA, InputArray _srcB, OutputArray _dst, int flags, bool conjB)
+void divSpectrums( InputArray _srcA, InputArray _srcB, OutputArray _dst, int flags, bool conjB)
 {
     Mat srcA = _srcA.getMat(), srcB = _srcB.getMat();
     int depth = srcA.depth(), cn = srcA.channels(), type = srcA.type();
@@ -513,7 +517,7 @@ static Point2d weightedCentroid(InputArray _src, cv::Point peakLocation, cv::Siz
 
 cv::Point2d cv::phaseCorrelate(InputArray _src1, InputArray _src2, InputArray _window, double* response)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     Mat src1 = _src1.getMat();
     Mat src2 = _src2.getMat();
@@ -596,7 +600,7 @@ cv::Point2d cv::phaseCorrelate(InputArray _src1, InputArray _src2, InputArray _w
 
 void cv::createHanningWindow(OutputArray _dst, cv::Size winSize, int type)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     CV_Assert( type == CV_32FC1 || type == CV_64FC1 );
     CV_Assert( winSize.width > 1 && winSize.height > 1 );
@@ -607,7 +611,7 @@ void cv::createHanningWindow(OutputArray _dst, cv::Size winSize, int type)
     int rows = dst.rows, cols = dst.cols;
 
     AutoBuffer<double> _wc(cols);
-    double * const wc = (double *)_wc;
+    double* const wc = _wc.data();
 
     double coeff0 = 2.0 * CV_PI / (double)(cols - 1), coeff1 = 2.0f * CV_PI / (double)(rows - 1);
     for(int j = 0; j < cols; j++)

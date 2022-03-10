@@ -6,6 +6,16 @@
 // Third party copyrights are property of their respective owners.
 #include "../precomp.hpp"
 #include "layers_common.hpp"
+#include "../op_inf_engine.hpp"
+
+#ifdef HAVE_DNN_NGRAPH
+#include "../ie_ngraph.hpp"
+#if INF_ENGINE_VER_MAJOR_GT(INF_ENGINE_RELEASE_2020_4)
+#include <ngraph/op/proposal.hpp>
+#else
+#include <ngraph/op/experimental/layers/proposal.hpp>
+#endif
+#endif
 
 namespace cv { namespace dnn {
 
@@ -16,14 +26,14 @@ public:
     {
         setParamsFrom(params);
 
-        uint32_t featStride = params.get<uint32_t>("feat_stride", 16);
-        uint32_t baseSize = params.get<uint32_t>("base_size", 16);
+        featStride = params.get<uint32_t>("feat_stride", 16);
+        baseSize = params.get<uint32_t>("base_size", 16);
         // uint32_t minSize = params.get<uint32_t>("min_size", 16);
-        uint32_t keepTopBeforeNMS = params.get<uint32_t>("pre_nms_topn", 6000);
+        keepTopBeforeNMS = params.get<uint32_t>("pre_nms_topn", 6000);
         keepTopAfterNMS = params.get<uint32_t>("post_nms_topn", 300);
-        float nmsThreshold = params.get<float>("nms_thresh", 0.7);
-        DictValue ratios = params.get("ratio");
-        DictValue scales = params.get("scale");
+        nmsThreshold = params.get<float>("nms_thresh", 0.7);
+        ratios = params.get("ratio");
+        scales = params.get("scale");
 
         {
             LayerParams lp;
@@ -44,11 +54,11 @@ public:
             for (int i = 0; i < ratios.size(); ++i)
             {
                 float ratio = ratios.get<float>(i);
+                float width = std::floor(baseSize / sqrt(ratio) + 0.5f);
+                float height = std::floor(width * ratio + 0.5f);
                 for (int j = 0; j < scales.size(); ++j)
                 {
                     float scale = scales.get<float>(j);
-                    float width = std::floor(baseSize / sqrt(ratio) + 0.5f);
-                    float height = std::floor(width * ratio + 0.5f);
                     widths.push_back(scale * width);
                     heights.push_back(scale * height);
                 }
@@ -81,6 +91,18 @@ public:
 
             detectionOutputLayer = DetectionOutputLayer::create(lp);
         }
+    }
+
+    virtual bool supportBackend(int backendId) CV_OVERRIDE
+    {
+#ifdef HAVE_INF_ENGINE
+        if (backendId == DNN_BACKEND_INFERENCE_ENGINE_NGRAPH)
+        {
+            bool isMyriad = preferableTarget == DNN_TARGET_MYRIAD || preferableTarget == DNN_TARGET_HDDL;
+            return !isMyriad;
+        }
+#endif
+        return backendId == DNN_BACKEND_OPENCV;
     }
 
     bool getMemoryShapes(const std::vector<MatShape> &inputs,
@@ -124,30 +146,36 @@ public:
         CV_Assert(layerInternals.empty());
         internals.push_back(layerOutputs[0]);
 
+        // Detections layer.
+        internals.push_back(shape(1, 1, keepTopAfterNMS, 7));
+
         outputs.resize(2);
         outputs[0] = shape(keepTopAfterNMS, 5);
         outputs[1] = shape(keepTopAfterNMS, 1);
         return false;
     }
 
-    void finalize(const std::vector<Mat*> &inputs, std::vector<Mat> &outputs) CV_OVERRIDE
+    void finalize(InputArrayOfArrays inputs_arr, OutputArrayOfArrays) CV_OVERRIDE
     {
-        std::vector<Mat*> layerInputs;
+        std::vector<Mat> inputs;
+        inputs_arr.getMatVector(inputs);
+
+        std::vector<Mat> layerInputs;
         std::vector<Mat> layerOutputs;
 
         // Scores permute layer.
-        Mat scores = getObjectScores(*inputs[0]);
-        layerInputs.assign(1, &scores);
+        Mat scores = getObjectScores(inputs[0]);
+        layerInputs.assign(1, scores);
         layerOutputs.assign(1, Mat(shape(scores.size[0], scores.size[2],
                                          scores.size[3], scores.size[1]), CV_32FC1));
         scoresPermute->finalize(layerInputs, layerOutputs);
 
         // BBox predictions permute layer.
-        Mat* bboxDeltas = inputs[1];
-        CV_Assert(bboxDeltas->dims == 4);
+        const Mat& bboxDeltas = inputs[1];
+        CV_Assert(bboxDeltas.dims == 4);
         layerInputs.assign(1, bboxDeltas);
-        layerOutputs.assign(1, Mat(shape(bboxDeltas->size[0], bboxDeltas->size[2],
-                                         bboxDeltas->size[3], bboxDeltas->size[1]), CV_32FC1));
+        layerOutputs.assign(1, Mat(shape(bboxDeltas.size[0], bboxDeltas.size[2],
+                                         bboxDeltas.size[3], bboxDeltas.size[1]), CV_32FC1));
         deltasPermute->finalize(layerInputs, layerOutputs);
     }
 
@@ -166,13 +194,14 @@ public:
         internals_.getUMatVector(internals);
 
         CV_Assert(inputs.size() == 3);
-        CV_Assert(internals.size() == 3);
+        CV_Assert(internals.size() == 4);
         const UMat& scores = inputs[0];
         const UMat& bboxDeltas = inputs[1];
         const UMat& imInfo = inputs[2];
         UMat& priorBoxes = internals[0];
         UMat& permuttedScores = internals[1];
         UMat& permuttedDeltas = internals[2];
+        UMat& detections = internals[3];
 
         CV_Assert(imInfo.total() >= 2);
         // We've chosen the smallest data type because we need just a shape from it.
@@ -207,7 +236,7 @@ public:
         layerInputs[2] = priorBoxes;
         layerInputs[3] = umat_fakeImageBlob;
 
-        layerOutputs[0] = UMat();
+        layerOutputs[0] = detections;
         detectionOutputLayer->forward(layerInputs, layerOutputs, internals);
 
         // DetectionOutputLayer produces 1x1xNx7 output where N might be less or
@@ -227,10 +256,6 @@ public:
         dst = outputs[1].rowRange(0, numDets);
         layerOutputs[0].col(2).copyTo(dst);
 
-        if (numDets < keepTopAfterNMS)
-            for (int i = 0; i < 2; ++i)
-                outputs[i].rowRange(numDets, keepTopAfterNMS).setTo(0);
-
         return true;
     }
 #endif
@@ -244,26 +269,31 @@ public:
                    OCL_PERFORMANCE_CHECK(ocl::Device::getDefault().isIntel()),
                    forward_ocl(inputs_arr, outputs_arr, internals_arr))
 
-        Layer::forward_fallback(inputs_arr, outputs_arr, internals_arr);
-    }
+        if (inputs_arr.depth() == CV_16S)
+        {
+            forward_fallback(inputs_arr, outputs_arr, internals_arr);
+            return;
+        }
 
-    void forward(std::vector<Mat*> &inputs, std::vector<Mat> &outputs, std::vector<Mat> &internals) CV_OVERRIDE
-    {
-        CV_TRACE_FUNCTION();
-        CV_TRACE_ARG_VALUE(name, "name", name.c_str());
+        std::vector<Mat> inputs, outputs, internals;
+        inputs_arr.getMatVector(inputs);
+        outputs_arr.getMatVector(outputs);
+        internals_arr.getMatVector(internals);
 
         CV_Assert(inputs.size() == 3);
-        CV_Assert(internals.size() == 3);
-        const Mat& scores = *inputs[0];
-        const Mat& bboxDeltas = *inputs[1];
-        const Mat& imInfo = *inputs[2];
+        CV_Assert(internals.size() == 4);
+        const Mat& scores = inputs[0];
+        const Mat& bboxDeltas = inputs[1];
+        const Mat& imInfo = inputs[2];
         Mat& priorBoxes = internals[0];
         Mat& permuttedScores = internals[1];
         Mat& permuttedDeltas = internals[2];
+        Mat& detections = internals[3];
 
         CV_Assert(imInfo.total() >= 2);
         // We've chosen the smallest data type because we need just a shape from it.
-        fakeImageBlob.create(shape(1, 1, imInfo.at<float>(0), imInfo.at<float>(1)), CV_8UC1);
+        // We don't allocate memory but just need the shape is correct.
+        Mat fakeImageBlob(shape(1, 1, imInfo.at<float>(0), imInfo.at<float>(1)), CV_8UC1, NULL);
 
         // Generate prior boxes.
         std::vector<Mat> layerInputs(2), layerOutputs(1, priorBoxes);
@@ -289,7 +319,7 @@ public:
         layerInputs[2] = priorBoxes;
         layerInputs[3] = fakeImageBlob;
 
-        layerOutputs[0] = Mat();
+        layerOutputs[0] = detections;
         detectionOutputLayer->forward(layerInputs, layerOutputs, internals);
 
         // DetectionOutputLayer produces 1x1xNx7 output where N might be less or
@@ -306,11 +336,46 @@ public:
         // The scores.
         dst = outputs[1].rowRange(0, numDets);
         layerOutputs[0].col(2).copyTo(dst);
-
-        if (numDets < keepTopAfterNMS)
-            for (int i = 0; i < 2; ++i)
-                outputs[i].rowRange(numDets, keepTopAfterNMS).setTo(0);
     }
+
+
+#ifdef HAVE_DNN_NGRAPH
+    virtual Ptr<BackendNode> initNgraph(const std::vector<Ptr<BackendWrapper> >& inputs,
+                                        const std::vector<Ptr<BackendNode> >& nodes) CV_OVERRIDE
+    {
+        CV_Assert(nodes.size() == 3);
+        ngraph::op::ProposalAttrs attr;
+        attr.base_size     = baseSize;
+        attr.nms_thresh    = nmsThreshold;
+        attr.feat_stride   = featStride;
+        attr.min_size      = 16;
+        attr.pre_nms_topn  = keepTopBeforeNMS;
+        attr.post_nms_topn = keepTopAfterNMS;
+
+        std::vector<float> ratiosVec(ratios.size());
+        for (int i = 0; i < ratios.size(); ++i)
+            ratiosVec[i] = ratios.get<float>(i);
+        attr.ratio = ratiosVec;
+
+        std::vector<float> scalesVec(scales.size());
+        for (int i = 0; i < scales.size(); ++i)
+            scalesVec[i] = scales.get<float>(i);
+        attr.scale = scalesVec;
+
+        auto& class_probs  = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
+        auto& class_logits = nodes[1].dynamicCast<InfEngineNgraphNode>()->node;
+        auto& image_shape  = nodes[2].dynamicCast<InfEngineNgraphNode>()->node;
+
+        CV_Assert_N(image_shape->get_shape().size() == 2, image_shape->get_shape().front() == 1);
+        auto shape   = std::make_shared<ngraph::op::Constant>(ngraph::element::i64,
+                       ngraph::Shape{1},
+                       std::vector<int64_t>{(int64_t)image_shape->get_shape().back()});
+        auto reshape = std::make_shared<ngraph::op::v1::Reshape>(image_shape, shape, true);
+
+        auto proposal = std::make_shared<ngraph::op::Proposal>(class_probs, class_logits, reshape, attr);
+        return Ptr<BackendNode>(new InfEngineNgraphNode(proposal));
+    }
+#endif  // HAVE_DNN_NGRAPH
 
 private:
     // A first half of channels are background scores. We need only a second one.
@@ -342,8 +407,9 @@ private:
 
     Ptr<PermuteLayer> deltasPermute;
     Ptr<PermuteLayer> scoresPermute;
-    uint32_t keepTopAfterNMS;
-    Mat fakeImageBlob;
+    uint32_t keepTopBeforeNMS, keepTopAfterNMS, featStride, baseSize;
+    float nmsThreshold;
+    DictValue ratios, scales;
 #ifdef HAVE_OPENCL
     UMat umat_fakeImageBlob;
 #endif

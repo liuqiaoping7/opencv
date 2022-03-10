@@ -88,6 +88,7 @@ public:
 
     void startTraining( const Ptr<TrainData>& trainData, int flags ) CV_OVERRIDE
     {
+        CV_Assert(!trainData.empty());
         DTreesImpl::startTraining(trainData, flags);
         sumResult.assign(w->sidx.size(), 0.);
 
@@ -184,6 +185,7 @@ public:
 
     bool train( const Ptr<TrainData>& trainData, int flags ) CV_OVERRIDE
     {
+        CV_Assert(!trainData.empty());
         startTraining(trainData, flags);
         int treeidx, ntrees = bparams.weakCount >= 0 ? bparams.weakCount : 10000;
         vector<int> sidx = w->sidx;
@@ -205,7 +207,7 @@ public:
         int nvars = (int)varIdx.size();
         double sumw = 0., C = 1.;
         cv::AutoBuffer<double> buf(n + nvars);
-        double* result = buf;
+        double* result = buf.data();
         float* sbuf = (float*)(result + n);
         Mat sample(1, nvars, CV_32F, sbuf);
         int predictFlags = bparams.boostType == Boost::DISCRETE ? (PREDICT_MAX_VOTE | RAW_OUTPUT) : PREDICT_SUM;
@@ -482,11 +484,13 @@ public:
 
     bool train( const Ptr<TrainData>& trainData, int flags ) CV_OVERRIDE
     {
+        CV_Assert(!trainData.empty());
         return impl.train(trainData, flags);
     }
 
     float predict( InputArray samples, OutputArray results, int flags ) const CV_OVERRIDE
     {
+        CV_CheckEQ(samples.cols(), getVarCount(), "");
         return impl.predict(samples, results, flags);
     }
 

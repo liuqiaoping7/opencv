@@ -191,8 +191,8 @@ public:
  *                  If only a roi needs to be selected, use
  *                  lsd_ptr->detect(image(roi), ..., lines);
  *                  lines += Scalar(roi.x, roi.y, roi.x, roi.y);
- * @param _lines    Return: A vector of Vec4i or Vec4f elements specifying the beginning and ending point of a line.
- *                          Where Vec4i/Vec4f is (x1, y1, x2, y2), point 1 is the start, point 2 - end.
+ * @param _lines    Return: A vector of Vec4f elements specifying the beginning and ending point of a line.
+ *                          Where Vec4f is (x1, y1, x2, y2), point 1 is the start, point 2 - end.
  *                          Returned lines are strictly oriented depending on the gradient.
  * @param width     Return: Vector of widths of the regions, where the lines are found. E.g. Width of line.
  * @param prec      Return: Vector of precisions with which the lines are found.
@@ -416,7 +416,7 @@ LineSegmentDetectorImpl::LineSegmentDetectorImpl(int _refine, double _scale, dou
 void LineSegmentDetectorImpl::detect(InputArray _image, OutputArray _lines,
                 OutputArray _width, OutputArray _prec, OutputArray _nfa)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     image = _image.getMat();
     CV_Assert(!image.empty() && image.type() == CV_8UC1);
@@ -772,6 +772,7 @@ bool LineSegmentDetectorImpl::refine(std::vector<RegionPoint>& reg, double reg_a
             ++n;
         }
     }
+    CV_Assert(n > 0);
     double mean_angle = sum / double(n);
     // 2 * standard deviation
     double tau = 2.0 * sqrt((s_sum - 2.0 * mean_angle * sum) / double(n) + mean_angle * mean_angle);
@@ -1121,7 +1122,7 @@ inline bool LineSegmentDetectorImpl::isAligned(int x, int y, const double& theta
 
 void LineSegmentDetectorImpl::drawSegments(InputOutputArray _image, InputArray lines)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     CV_Assert(!_image.empty() && (_image.channels() == 1 || _image.channels() == 3));
 
@@ -1161,11 +1162,11 @@ void LineSegmentDetectorImpl::drawSegments(InputOutputArray _image, InputArray l
 
 int LineSegmentDetectorImpl::compareSegments(const Size& size, InputArray lines1, InputArray lines2, InputOutputArray _image)
 {
-    CV_INSTRUMENT_REGION()
+    CV_INSTRUMENT_REGION();
 
     Size sz = size;
     if (_image.needed() && _image.size() != size) sz = _image.size();
-    CV_Assert(sz.area());
+    CV_Assert(!sz.empty());
 
     Mat_<uchar> I1 = Mat_<uchar>::zeros(sz);
     Mat_<uchar> I2 = Mat_<uchar>::zeros(sz);

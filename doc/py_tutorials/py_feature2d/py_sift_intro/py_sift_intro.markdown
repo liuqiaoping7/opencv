@@ -20,10 +20,10 @@ scale invariant.
 
 ![image](images/sift_scale_invariant.jpg)
 
-So, in 2004, **D.Lowe**, University of British Columbia, came up with a new algorithm, Scale
+In 2004, **D.Lowe**, University of British Columbia, came up with a new algorithm, Scale
 Invariant Feature Transform (SIFT) in his paper, **Distinctive Image Features from Scale-Invariant
 Keypoints**, which extract keypoints and compute its descriptors. *(This paper is easy to understand
-and considered to be best material available on SIFT. So this explanation is just a short summary of
+and considered to be best material available on SIFT. This explanation is just a short summary of
 this paper)*.
 
 There are mainly four steps involved in SIFT algorithm. We will see them one-by-one.
@@ -81,8 +81,8 @@ points.
 Now an orientation is assigned to each keypoint to achieve invariance to image rotation. A
 neighbourhood is taken around the keypoint location depending on the scale, and the gradient
 magnitude and direction is calculated in that region. An orientation histogram with 36 bins covering
-360 degrees is created. (It is weighted by gradient magnitude and gaussian-weighted circular window
-with \f$\sigma\f$ equal to 1.5 times the scale of keypoint. The highest peak in the histogram is taken
+360 degrees is created (It is weighted by gradient magnitude and gaussian-weighted circular window
+with \f$\sigma\f$ equal to 1.5 times the scale of keypoint). The highest peak in the histogram is taken
 and any peak above 80% of it is also considered to calculate the orientation. It creates keypoints
 with same location and scale, but different directions. It contribute to stability of matching.
 
@@ -99,19 +99,20 @@ illumination changes, rotation etc.
 Keypoints between two images are matched by identifying their nearest neighbours. But in some cases,
 the second closest-match may be very near to the first. It may happen due to noise or some other
 reasons. In that case, ratio of closest-distance to second-closest distance is taken. If it is
-greater than 0.8, they are rejected. It eliminaters around 90% of false matches while discards only
+greater than 0.8, they are rejected. It eliminates around 90% of false matches while discards only
 5% correct matches, as per the paper.
 
-So this is a summary of SIFT algorithm. For more details and understanding, reading the original
-paper is highly recommended. Remember one thing, this algorithm is patented. So this algorithm is
-included in [the opencv contrib repo](https://github.com/opencv/opencv_contrib)
+This is a summary of SIFT algorithm. For more details and understanding, reading the original
+paper is highly recommended.
 
 SIFT in OpenCV
 --------------
 
-So now let's see SIFT functionalities available in OpenCV. Let's start with keypoint detection and
-draw them. First we have to construct a SIFT object. We can pass different parameters to it which
-are optional and they are well explained in docs.
+Now let's see SIFT functionalities available in OpenCV. Note that these were previously only
+available in [the opencv contrib repo](https://github.com/opencv/opencv_contrib), but the patent
+expired in the year 2020. So they are now included in the main repo. Let's start with keypoint
+detection and draw them. First we have to construct a SIFT object. We can pass different
+parameters to it which are optional and they are well explained in docs.
 @code{.py}
 import numpy as np
 import cv2 as cv
@@ -119,7 +120,7 @@ import cv2 as cv
 img = cv.imread('home.jpg')
 gray= cv.cvtColor(img,cv.COLOR_BGR2GRAY)
 
-sift = cv.xfeatures2d.SIFT_create()
+sift = cv.SIFT_create()
 kp = sift.detect(gray,None)
 
 img=cv.drawKeypoints(gray,kp,img)
@@ -151,11 +152,11 @@ Now to calculate the descriptor, OpenCV provides two methods.
 
 We will see the second method:
 @code{.py}
-sift = cv.xfeatures2d.SIFT_create()
+sift = cv.SIFT_create()
 kp, des = sift.detectAndCompute(gray,None)
 @endcode
 Here kp will be a list of keypoints and des is a numpy array of shape
-\f$Number\_of\_Keypoints \times 128\f$.
+\f$\text{(Number of Keypoints)} \times 128\f$.
 
 So we got keypoints, descriptors etc. Now we want to see how to match keypoints in different images.
 That we will learn in coming chapters.

@@ -8,10 +8,14 @@ set(OPENCV_PYTHON_BINDINGS_DIR "${CMAKE_CURRENT_BINARY_DIR}" CACHE INTERNAL "")
 # This file is included from a subdirectory
 set(PYTHON_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../")
 
+if(NOT OPENCV_SKIP_PYTHON_LOADER)
+  include("${PYTHON_SOURCE_DIR}/python_loader.cmake")
+endif()
+
 # get list of modules to wrap
 set(OPENCV_PYTHON_MODULES)
 foreach(m ${OPENCV_MODULES_BUILD})
-  if (";${OPENCV_MODULE_${m}_WRAPPERS};" MATCHES ";${MODULE_NAME};" AND HAVE_${m})
+  if (";${OPENCV_MODULE_${m}_WRAPPERS};" MATCHES ";python;" AND HAVE_${m})
     list(APPEND OPENCV_PYTHON_MODULES ${m})
     #message(STATUS "\t${m}")
   endif()
@@ -20,17 +24,30 @@ endforeach()
 set(opencv_hdrs "")
 set(opencv_userdef_hdrs "")
 foreach(m ${OPENCV_PYTHON_MODULES})
-  ocv_list_filter(OPENCV_MODULE_${m}_HEADERS "${OPENCV_MODULE_${m}_LOCATION}/include" __hdrs)
-  list(APPEND opencv_hdrs ${__hdrs})
+  foreach (hdr ${OPENCV_MODULE_${m}_HEADERS})
+    ocv_is_subdir(is_sub "${OPENCV_MODULE_${m}_LOCATION}/include" "${hdr}")
+    if(is_sub)
+      list(APPEND opencv_hdrs "${hdr}")
+    endif()
+  endforeach()
+
+  # both wrapping and C++ implementation
+  file(GLOB hdr2 ${OPENCV_MODULE_${m}_LOCATION}/misc/python/python_*.hpp)
+  list(SORT hdr2)
+  list(APPEND opencv_hdrs ${hdr2})
+  list(APPEND opencv_userdef_hdrs ${hdr2})
+
+  file(GLOB hdr ${OPENCV_MODULE_${m}_LOCATION}/misc/python/shadow*.hpp)
+  list(SORT hdr)
+  list(APPEND opencv_hdrs ${hdr})
   file(GLOB userdef_hdrs ${OPENCV_MODULE_${m}_LOCATION}/misc/python/pyopencv*.hpp)
+  list(SORT userdef_hdrs)
   list(APPEND opencv_userdef_hdrs ${userdef_hdrs})
 endforeach(m)
 
 # header blacklist
 ocv_list_filterout(opencv_hdrs "modules/.*\\\\.h$")
-ocv_list_filterout(opencv_hdrs "modules/core/.*/cuda")
-ocv_list_filterout(opencv_hdrs "modules/cuda.*")
-ocv_list_filterout(opencv_hdrs "modules/cudev")
+ocv_list_filterout(opencv_hdrs "modules/core/.*/cuda/")
 ocv_list_filterout(opencv_hdrs "modules/core/.*/hal/")
 ocv_list_filterout(opencv_hdrs "modules/core/.*/opencl/")
 ocv_list_filterout(opencv_hdrs "modules/.+/utils/.*")
@@ -38,14 +55,22 @@ ocv_list_filterout(opencv_hdrs "modules/.*\\\\.inl\\\\.h*")
 ocv_list_filterout(opencv_hdrs "modules/.*_inl\\\\.h*")
 ocv_list_filterout(opencv_hdrs "modules/.*\\\\.details\\\\.h*")
 ocv_list_filterout(opencv_hdrs "modules/.*\\\\.private\\\\.h*")
+ocv_list_filterout(opencv_hdrs "modules/.*/private\\\\.h*")
+ocv_list_filterout(opencv_hdrs "modules/.*/legacy/.*")
 ocv_list_filterout(opencv_hdrs "modules/.*/detection_based_tracker\\\\.hpp") # Conditional compilation
+if(NOT HAVE_CUDA)
+  ocv_list_filterout(opencv_hdrs "modules/cuda.*")
+  ocv_list_filterout(opencv_hdrs "modules/cudev")
+endif()
 
 set(cv2_generated_files
-    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_include.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_enums.h"
     "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_funcs.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_include.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_modules.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_modules_content.h"
     "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_types.h"
-    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_type_reg.h"
-    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_ns_reg.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/pyopencv_generated_types_content.h"
     "${OPENCV_PYTHON_SIGNATURES_FILE}"
 )
 
@@ -96,6 +121,7 @@ ocv_cmake_script_append_var(PYTHON_CONFIG_SCRIPT
 
     CMAKE_MODULE_LINKER_FLAGS
     CMAKE_INSTALL_PREFIX
+    OPENCV_PYTHON_INSTALL_PATH
 
     OpenCV_SOURCE_DIR
 

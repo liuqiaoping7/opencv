@@ -1,5 +1,3 @@
-/* $Id: tif_luv.c,v 1.49 2017-07-24 12:47:30 erouault Exp $ */
-
 /*
  * Copyright (c) 1997 Greg Ward Larson
  * Copyright (c) 1997 Silicon Graphics, Inc.
@@ -195,6 +193,7 @@ LogL16Decode(TIFF* tif, uint8* op, tmsize_t occ, uint16 s)
 	tmsize_t cc;
 	int rc;
 
+        (void)s;
 	assert(s == 0);
 	assert(sp != NULL);
 
@@ -215,7 +214,7 @@ LogL16Decode(TIFF* tif, uint8* op, tmsize_t occ, uint16 s)
 	bp = (unsigned char*) tif->tif_rawcp;
 	cc = tif->tif_rawcc;
 	/* get each byte string */
-	for (shft = 2*8; (shft -= 8) >= 0; ) {
+	for (shft = 8; shft >= 0; shft -=8) {
 		for (i = 0; i < npixels && cc > 0; ) {
 			if (*bp >= 128) {		/* run */
 				if( cc < 2 )
@@ -268,6 +267,7 @@ LogLuvDecode24(TIFF* tif, uint8* op, tmsize_t occ, uint16 s)
 	unsigned char* bp;
 	uint32* tp;
 
+        (void)s;
 	assert(s == 0);
 	assert(sp != NULL);
 
@@ -328,6 +328,7 @@ LogLuvDecode32(TIFF* tif, uint8* op, tmsize_t occ, uint16 s)
 	tmsize_t cc;
 	int rc;
 
+        (void)s;
 	assert(s == 0);
 	sp = DecoderState(tif);
 	assert(sp != NULL);
@@ -349,7 +350,7 @@ LogLuvDecode32(TIFF* tif, uint8* op, tmsize_t occ, uint16 s)
 	bp = (unsigned char*) tif->tif_rawcp;
 	cc = tif->tif_rawcc;
 	/* get each byte string */
-	for (shft = 4*8; (shft -= 8) >= 0; ) {
+	for (shft = 24; shft >= 0; shft -=8) {
 		for (i = 0; i < npixels && cc > 0; ) {
 			if (*bp >= 128) {		/* run */
 				if( cc < 2 )
@@ -449,6 +450,7 @@ LogL16Encode(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 	int rc=0, mask;
 	tmsize_t beg;
 
+        (void)s;
 	assert(s == 0);
 	assert(sp != NULL);
 	npixels = cc / sp->pixel_size;
@@ -467,7 +469,7 @@ LogL16Encode(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 	/* compress each byte string */
 	op = tif->tif_rawcp;
 	occ = tif->tif_rawdatasize - tif->tif_rawcc;
-	for (shft = 2*8; (shft -= 8) >= 0; )
+	for (shft = 8; shft >= 0; shft -=8) {
 		for (i = 0; i < npixels; i += rc) {
 			if (occ < 4) {
 				tif->tif_rawcp = op;
@@ -522,6 +524,7 @@ LogL16Encode(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 			} else
 				rc = 0;
 		}
+	}
 	tif->tif_rawcp = op;
 	tif->tif_rawcc = tif->tif_rawdatasize - occ;
 
@@ -542,6 +545,7 @@ LogLuvEncode24(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 	uint8* op;
 	uint32* tp;
 
+        (void)s;
 	assert(s == 0);
 	assert(sp != NULL);
 	npixels = cc / sp->pixel_size;
@@ -599,6 +603,7 @@ LogLuvEncode32(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 	int rc=0, mask;
 	tmsize_t beg;
 
+        (void)s;
 	assert(s == 0);
 	assert(sp != NULL);
 
@@ -618,7 +623,7 @@ LogLuvEncode32(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 	/* compress each byte string */
 	op = tif->tif_rawcp;
 	occ = tif->tif_rawdatasize - tif->tif_rawcc;
-	for (shft = 4*8; (shft -= 8) >= 0; )
+	for (shft = 24; shft >= 0; shft -=8) {
 		for (i = 0; i < npixels; i += rc) {
 			if (occ < 4) {
 				tif->tif_rawcp = op;
@@ -673,6 +678,7 @@ LogLuvEncode32(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 			} else
 				rc = 0;
 		}
+	}
 	tif->tif_rawcp = op;
 	tif->tif_rawcc = tif->tif_rawdatasize - occ;
 
@@ -742,9 +748,14 @@ LogLuvEncodeTile(TIFF* tif, uint8* bp, tmsize_t cc, uint16 s)
 #undef exp2  /* Conflict with C'99 function */
 #define exp2(x)		exp(M_LN2*(x))
 
-#define itrunc(x,m)	((m)==SGILOGENCODE_NODITHER ? \
-				(int)(x) : \
-				(int)((x) + rand()*(1./RAND_MAX) - .5))
+static int tiff_itrunc(double x, int m)
+{
+    if( m == SGILOGENCODE_NODITHER )
+        return (int)x;
+    /* Silence CoverityScan warning about bad crypto function */
+    /* coverity[dont_call] */
+    return (int)(x + rand()*(1./RAND_MAX) - .5);
+}
 
 #if !LOGLUV_PUBLIC
 static
@@ -772,9 +783,9 @@ LogL16fromY(double Y, int em)	/* get 16-bit LogL from Y */
 	if (Y <= -1.8371976e19)
 		return (0xffff);
 	if (Y > 5.4136769e-20)
-		return itrunc(256.*(log2(Y) + 64.), em);
+		return tiff_itrunc(256.*(log2(Y) + 64.), em);
 	if (Y < -5.4136769e-20)
-		return (~0x7fff | itrunc(256.*(log2(-Y) + 64.), em));
+		return (~0x7fff | tiff_itrunc(256.*(log2(-Y) + 64.), em));
 	return (0);
 }
 
@@ -850,7 +861,7 @@ LogL10fromY(double Y, int em)	/* get 10-bit LogL from Y */
 	else if (Y <= .00024283)
 		return (0);
 	else
-		return itrunc(64.*(log2(Y) + 12.), em);
+		return tiff_itrunc(64.*(log2(Y) + 12.), em);
 }
 
 #define NANGLES		100
@@ -920,12 +931,12 @@ uv_encode(double u, double v, int em)	/* encode (u',v') coordinates */
 
 	if (v < UV_VSTART)
 		return oog_encode(u, v);
-	vi = itrunc((v - UV_VSTART)*(1./UV_SQSIZ), em);
+	vi = tiff_itrunc((v - UV_VSTART)*(1./UV_SQSIZ), em);
 	if (vi >= UV_NVS)
 		return oog_encode(u, v);
 	if (u < uv_row[vi].ustart)
 		return oog_encode(u, v);
-	ui = itrunc((u - uv_row[vi].ustart)*(1./UV_SQSIZ), em);
+	ui = tiff_itrunc((u - uv_row[vi].ustart)*(1./UV_SQSIZ), em);
 	if (ui >= uv_row[vi].nus)
 		return oog_encode(u, v);
 
@@ -1094,7 +1105,7 @@ Luv24fromLuv48(LogLuvState* sp, uint8* op, tmsize_t n)
 		else if (sp->encode_meth == SGILOGENCODE_NODITHER)
 			Le = (luv3[0]-3314) >> 2;
 		else
-			Le = itrunc(.25*(luv3[0]-3314.), sp->encode_meth);
+			Le = tiff_itrunc(.25*(luv3[0]-3314.), sp->encode_meth);
 
 		Ce = uv_encode((luv3[1]+.5)/(1<<15), (luv3[2]+.5)/(1<<15),
 					sp->encode_meth);
@@ -1150,10 +1161,10 @@ LogLuv32fromXYZ(float XYZ[3], int em)
 		v = 9.*XYZ[1] / s;
 	}
 	if (u <= 0.) ue = 0;
-	else ue = itrunc(UVSCALE*u, em);
+	else ue = tiff_itrunc(UVSCALE*u, em);
 	if (ue > 255) ue = 255;
 	if (v <= 0.) ve = 0;
-	else ve = itrunc(UVSCALE*v, em);
+	else ve = tiff_itrunc(UVSCALE*v, em);
 	if (ve > 255) ve = 255;
 					/* combine encodings */
 	return (Le << 16 | ue << 8 | ve);
@@ -1233,8 +1244,8 @@ Luv32fromLuv48(LogLuvState* sp, uint8* op, tmsize_t n)
 	}
 	while (n-- > 0) {
 		*luv++ = (uint32)luv3[0] << 16 |
-	(itrunc(luv3[1]*(UVSCALE/(1<<15)), sp->encode_meth) << 8 & 0xff00) |
-		(itrunc(luv3[2]*(UVSCALE/(1<<15)), sp->encode_meth) & 0xff);
+	(tiff_itrunc(luv3[1]*(UVSCALE/(1<<15)), sp->encode_meth) << 8 & 0xff00) |
+		(tiff_itrunc(luv3[2]*(UVSCALE/(1<<15)), sp->encode_meth) & 0xff);
 		luv3 += 3;
 	}
 }
@@ -1264,16 +1275,10 @@ LogL16GuessDataFmt(TIFFDirectory *td)
 	return (SGILOGDATAFMT_UNKNOWN);
 }
 
-
-#define TIFF_SIZE_T_MAX ((size_t) ~ ((size_t)0))
-#define TIFF_TMSIZE_T_MAX (tmsize_t)(TIFF_SIZE_T_MAX >> 1)
-
 static tmsize_t
 multiply_ms(tmsize_t m1, tmsize_t m2)
 {
-        if( m1 == 0 || m2 > TIFF_TMSIZE_T_MAX / m1 )
-            return 0;
-        return m1 * m2;
+        return _TIFFMultiplySSize(NULL, m1, m2, NULL);
 }
 
 static int
@@ -1507,7 +1512,7 @@ LogLuvSetupEncode(TIFF* tif)
 	switch (td->td_photometric) {
 	case PHOTOMETRIC_LOGLUV:
 		if (!LogLuvInitState(tif))
-			break;
+			return (0);
 		if (td->td_compression == COMPRESSION_SGILOG24) {
 			tif->tif_encoderow = LogLuvEncode24;
 			switch (sp->user_datafmt) {
@@ -1540,7 +1545,7 @@ LogLuvSetupEncode(TIFF* tif)
 		break;
 	case PHOTOMETRIC_LOGL:
 		if (!LogL16InitState(tif))
-			break;
+			return (0);
 		tif->tif_encoderow = LogL16Encode;  
 		switch (sp->user_datafmt) {
 		case SGILOGDATAFMT_FLOAT:
@@ -1556,7 +1561,7 @@ LogLuvSetupEncode(TIFF* tif)
 		TIFFErrorExt(tif->tif_clientdata, module,
 		    "Inappropriate photometric interpretation %d for SGILog compression; %s",
 		    td->td_photometric, "must be either LogLUV or LogL");
-		break;
+		return (0);
 	}
 	sp->encoder_state = 1;
 	return (1);

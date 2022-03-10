@@ -30,7 +30,7 @@ def goodFeaturesToTrack_Demo(val):
     print('** Number of corners detected:', corners.shape[0])
     radius = 4
     for i in range(corners.shape[0]):
-        cv.circle(copy, (corners[i,0,0], corners[i,0,1]), radius, (rng.randint(0,256), rng.randint(0,256), rng.randint(0,256)), cv.FILLED)
+        cv.circle(copy, (int(corners[i,0,0]), int(corners[i,0,1])), radius, (rng.randint(0,256), rng.randint(0,256), rng.randint(0,256)), cv.FILLED)
 
     # Show what you got
     cv.namedWindow(source_window)
@@ -38,10 +38,10 @@ def goodFeaturesToTrack_Demo(val):
 
 # Load source image and convert it to gray
 parser = argparse.ArgumentParser(description='Code for Shi-Tomasi corner detector tutorial.')
-parser.add_argument('--input', help='Path to input image.', default='../data/pic3.png')
+parser.add_argument('--input', help='Path to input image.', default='pic3.png')
 args = parser.parse_args()
 
-src = cv.imread(args.input)
+src = cv.imread(cv.samples.findFile(args.input))
 if src is None:
     print('Could not open or find the image:', args.input)
     exit(0)

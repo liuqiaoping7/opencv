@@ -101,7 +101,7 @@ medianPartition( size_t* ofs, int a, int b, const float* vals )
         int i0 = a, i1 = (a+b)/2, i2 = b;
         float v0 = vals[ofs[i0]], v1 = vals[ofs[i1]], v2 = vals[ofs[i2]];
         int ip = v0 < v1 ? (v1 < v2 ? i1 : v0 < v2 ? i2 : i0) :
-            v0 < v2 ? i0 : (v1 < v2 ? i2 : i1);
+                 v0 < v2 ? (v1 == v0 ? i2 : i0): (v1 < v2 ? i2 : i1);
         float pivot = vals[ofs[ip]];
         std::swap(ofs[ip], ofs[i2]);
 
@@ -131,7 +131,6 @@ medianPartition( size_t* ofs, int a, int b, const float* vals )
         CV_Assert(vals[ofs[k]] >= pivot);
         more += vals[ofs[k]] > pivot;
     }
-    CV_Assert(std::abs(more - less) <= 1);
 
     return vals[ofs[middle]];
 }
@@ -285,13 +284,13 @@ int KDTree::findNearest(InputArray _vec, int K, int emax,
     CV_Assert(K > 0 && (normType == NORM_L2 || normType == NORM_L1));
 
     AutoBuffer<uchar> _buf((K+1)*(sizeof(float) + sizeof(int)));
-    int* idx = (int*)(uchar*)_buf;
+    int* idx = (int*)_buf.data();
     float* dist = (float*)(idx + K + 1);
     int i, j, ncount = 0, e = 0;
 
     int qsize = 0, maxqsize = 1 << 10;
     AutoBuffer<uchar> _pqueue(maxqsize*sizeof(PQueueElem));
-    PQueueElem* pqueue = (PQueueElem*)(uchar*)_pqueue;
+    PQueueElem* pqueue = (PQueueElem*)_pqueue.data();
     emax = std::max(emax, 1);
 
     for( e = 0; e < emax; )
@@ -433,7 +432,7 @@ void KDTree::findOrthoRange(InputArray _lowerBound,
 
     std::vector<int> idx;
     AutoBuffer<int> _stack(MAX_TREE_DEPTH*2 + 1);
-    int* stack = _stack;
+    int* stack = _stack.data();
     int top = 0;
 
     stack[top++] = 0;

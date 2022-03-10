@@ -1,6 +1,16 @@
 Histogram Calculation {#tutorial_histogram_calculation}
 =====================
 
+@tableofcontents
+
+@prev_tutorial{tutorial_histogram_equalization}
+@next_tutorial{tutorial_histogram_comparison}
+
+|    |    |
+| -: | :- |
+| Original author | Ana Huamán |
+| Compatibility | OpenCV >= 3.0 |
+
 Goal
 ----
 
@@ -69,7 +79,7 @@ Code
 
 @add_toggle_cpp
 -   **Downloadable code**: Click
-    [here](https://github.com/opencv/opencv/tree/master/samples/cpp/tutorial_code/Histograms_Matching/calcHist_Demo.cpp)
+    [here](https://github.com/opencv/opencv/tree/4.x/samples/cpp/tutorial_code/Histograms_Matching/calcHist_Demo.cpp)
 
 -   **Code at glance:**
     @include samples/cpp/tutorial_code/Histograms_Matching/calcHist_Demo.cpp
@@ -77,7 +87,7 @@ Code
 
 @add_toggle_java
 -   **Downloadable code**: Click
-    [here](https://github.com/opencv/opencv/tree/master/samples/java/tutorial_code/Histograms_Matching/histogram_calculation/CalcHistDemo.java)
+    [here](https://github.com/opencv/opencv/tree/4.x/samples/java/tutorial_code/Histograms_Matching/histogram_calculation/CalcHistDemo.java)
 
 -   **Code at glance:**
     @include samples/java/tutorial_code/Histograms_Matching/histogram_calculation/CalcHistDemo.java
@@ -85,7 +95,7 @@ Code
 
 @add_toggle_python
 -   **Downloadable code**: Click
-    [here](https://github.com/opencv/opencv/tree/master/samples/python/tutorial_code/Histograms_Matching/histogram_calculation/calcHist_Demo.py)
+    [here](https://github.com/opencv/opencv/tree/4.x/samples/python/tutorial_code/Histograms_Matching/histogram_calculation/calcHist_Demo.py)
 
 -   **Code at glance:**
     @include samples/python/tutorial_code/Histograms_Matching/histogram_calculation/calcHist_Demo.py

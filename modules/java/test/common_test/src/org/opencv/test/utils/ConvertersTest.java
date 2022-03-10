@@ -4,7 +4,9 @@ import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Point3;
+import org.opencv.core.Size;
 import org.opencv.core.Rect;
+import org.opencv.core.RotatedRect;
 import org.opencv.core.DMatch;
 import org.opencv.core.KeyPoint;
 import org.opencv.test.OpenCVTestCase;
@@ -26,9 +28,9 @@ public class ConvertersTest extends OpenCVTestCase {
         byte value1 = 2;
         byte value2 = 4;
         byte value3 = 3;
-        truth.add(new Byte(value1));
-        truth.add(new Byte(value2));
-        truth.add(new Byte(value3));
+        truth.add(Byte.valueOf(value1));
+        truth.add(Byte.valueOf(value2));
+        truth.add(Byte.valueOf(value3));
         assertEquals(truth, bs);
     }
 
@@ -222,6 +224,19 @@ public class ConvertersTest extends OpenCVTestCase {
         assertListRectEquals(truth, rectangles);
     }
 
+    public void testMat_to_vector_RotatedRect() {
+        Mat src = new Mat(2, 1, CvType.CV_32FC(5));
+        src.put(0, 0, 2, 2, 5, 2, 7,
+                      0, 6, 4, 1, 3);
+        List<RotatedRect> rectangles = new ArrayList<RotatedRect>();
+
+        Converters.Mat_to_vector_RotatedRect(src, rectangles);
+        List<RotatedRect> truth = new ArrayList<RotatedRect>();
+        truth.add(new RotatedRect(new Point(2, 2), new Size(5, 2), 7));
+        truth.add(new RotatedRect(new Point(0, 6), new Size(4, 1), 3));
+        assertListRotatedRectEquals(truth, rectangles);
+    }
+
     public void testMat_to_vector_uchar() {
         Mat src = new Mat(3, 1, CvType.CV_8UC1);
         src.put(0, 0, 2, 4, 3);
@@ -233,9 +248,9 @@ public class ConvertersTest extends OpenCVTestCase {
         byte value1 = 2;
         byte value2 = 4;
         byte value3 = 3;
-        truth.add(new Byte(value1));
-        truth.add(new Byte(value2));
-        truth.add(new Byte(value3));
+        truth.add(Byte.valueOf(value1));
+        truth.add(Byte.valueOf(value2));
+        truth.add(Byte.valueOf(value3));
         assertEquals(truth, bs);
     }
 
@@ -261,10 +276,10 @@ public class ConvertersTest extends OpenCVTestCase {
         byte value2 = 2;
         byte value3 = 3;
         byte value4 = 4;
-        bytes.add(new Byte(value1));
-        bytes.add(new Byte(value2));
-        bytes.add(new Byte(value3));
-        bytes.add(new Byte(value4));
+        bytes.add(Byte.valueOf(value1));
+        bytes.add(Byte.valueOf(value2));
+        bytes.add(Byte.valueOf(value3));
+        bytes.add(Byte.valueOf(value4));
 
         dst = Converters.vector_char_to_Mat(bytes);
         truth = new Mat(4, 1, CvType.CV_8SC1);
@@ -465,16 +480,29 @@ public class ConvertersTest extends OpenCVTestCase {
         assertMatEqual(truth, dst);
     }
 
+    public void testVector_RotatedRect_to_Mat() {
+        List<RotatedRect> rectangles = new ArrayList<RotatedRect>();
+        rectangles.add(new RotatedRect(new Point(2, 2), new Size(5, 2), 7));
+        rectangles.add(new RotatedRect(new Point(0, 0), new Size(6, 4), 3));
+
+        Mat dst = Converters.vector_RotatedRect_to_Mat(rectangles);
+
+        Mat truth = new Mat(2, 1, CvType.CV_32FC(5));
+        truth.put(0, 0, 2, 2, 5, 2, 7,
+                        0, 0, 6, 4, 3);
+        assertMatEqual(truth, dst, EPS);
+    }
+
     public void testVector_uchar_to_Mat() {
         List<Byte> bytes = new ArrayList<Byte>();
         byte value1 = 1;
         byte value2 = 2;
         byte value3 = 3;
         byte value4 = 4;
-        bytes.add(new Byte(value1));
-        bytes.add(new Byte(value2));
-        bytes.add(new Byte(value3));
-        bytes.add(new Byte(value4));
+        bytes.add(Byte.valueOf(value1));
+        bytes.add(Byte.valueOf(value2));
+        bytes.add(Byte.valueOf(value3));
+        bytes.add(Byte.valueOf(value4));
 
         dst = Converters.vector_uchar_to_Mat(bytes);
         truth = new Mat(4, 1, CvType.CV_8UC1);
@@ -498,5 +526,4 @@ public class ConvertersTest extends OpenCVTestCase {
         fail("Not yet implemented");
 
     }
-
 }

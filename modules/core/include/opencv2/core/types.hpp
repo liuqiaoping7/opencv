@@ -162,11 +162,23 @@ public:
     //! default constructor
     Point_();
     Point_(_Tp _x, _Tp _y);
+#if (defined(__GNUC__) && __GNUC__ < 5) && !defined(__clang__)  // GCC 4.x bug. Details: https://github.com/opencv/opencv/pull/20837
     Point_(const Point_& pt);
+    Point_(Point_&& pt) CV_NOEXCEPT = default;
+#elif OPENCV_ABI_COMPATIBILITY < 500
+    Point_(const Point_& pt) = default;
+    Point_(Point_&& pt) CV_NOEXCEPT = default;
+#endif
     Point_(const Size_<_Tp>& sz);
     Point_(const Vec<_Tp, 2>& v);
 
+#if (defined(__GNUC__) && __GNUC__ < 5) && !defined(__clang__)  // GCC 4.x bug. Details: https://github.com/opencv/opencv/pull/20837
     Point_& operator = (const Point_& pt);
+    Point_& operator = (Point_&& pt) CV_NOEXCEPT = default;
+#elif OPENCV_ABI_COMPATIBILITY < 500
+    Point_& operator = (const Point_& pt) = default;
+    Point_& operator = (Point_&& pt) CV_NOEXCEPT = default;
+#endif
     //! conversion to another data type
     template<typename _Tp2> operator Point_<_Tp2>() const;
 
@@ -242,11 +254,17 @@ public:
     //! default constructor
     Point3_();
     Point3_(_Tp _x, _Tp _y, _Tp _z);
-    Point3_(const Point3_& pt);
+#if OPENCV_ABI_COMPATIBILITY < 500
+    Point3_(const Point3_& pt) = default;
+    Point3_(Point3_&& pt) CV_NOEXCEPT = default;
+#endif
     explicit Point3_(const Point_<_Tp>& pt);
     Point3_(const Vec<_Tp, 3>& v);
 
-    Point3_& operator = (const Point3_& pt);
+#if OPENCV_ABI_COMPATIBILITY < 500
+    Point3_& operator = (const Point3_& pt) = default;
+    Point3_& operator = (Point3_&& pt) CV_NOEXCEPT = default;
+#endif
     //! conversion to another data type
     template<typename _Tp2> operator Point3_<_Tp2>() const;
     //! conversion to cv::Vec<>
@@ -316,10 +334,16 @@ public:
     //! default constructor
     Size_();
     Size_(_Tp _width, _Tp _height);
-    Size_(const Size_& sz);
+#if OPENCV_ABI_COMPATIBILITY < 500
+    Size_(const Size_& sz) = default;
+    Size_(Size_&& sz) CV_NOEXCEPT = default;
+#endif
     Size_(const Point_<_Tp>& pt);
 
-    Size_& operator = (const Size_& sz);
+#if OPENCV_ABI_COMPATIBILITY < 500
+    Size_& operator = (const Size_& sz) = default;
+    Size_& operator = (Size_&& sz) CV_NOEXCEPT = default;
+#endif
     //! the area (width*height)
     _Tp area() const;
     //! aspect ratio (width/height)
@@ -419,11 +443,17 @@ public:
     //! default constructor
     Rect_();
     Rect_(_Tp _x, _Tp _y, _Tp _width, _Tp _height);
-    Rect_(const Rect_& r);
+#if OPENCV_ABI_COMPATIBILITY < 500
+    Rect_(const Rect_& r) = default;
+    Rect_(Rect_&& r) CV_NOEXCEPT = default;
+#endif
     Rect_(const Point_<_Tp>& org, const Size_<_Tp>& sz);
     Rect_(const Point_<_Tp>& pt1, const Point_<_Tp>& pt2);
 
-    Rect_& operator = ( const Rect_& r );
+#if OPENCV_ABI_COMPATIBILITY < 500
+    Rect_& operator = (const Rect_& r) = default;
+    Rect_& operator = (Rect_&& r) CV_NOEXCEPT = default;
+#endif
     //! the top-left corner
     Point_<_Tp> tl() const;
     //! the bottom-right corner
@@ -633,6 +663,12 @@ public:
     Scalar_(_Tp v0, _Tp v1, _Tp v2=0, _Tp v3=0);
     Scalar_(_Tp v0);
 
+    Scalar_(const Scalar_& s);
+    Scalar_(Scalar_&& s) CV_NOEXCEPT;
+
+    Scalar_& operator=(const Scalar_& s);
+    Scalar_& operator=(Scalar_&& s) CV_NOEXCEPT;
+
     template<typename _Tp2, int cn>
     Scalar_(const Vec<_Tp2, cn>& v);
 
@@ -700,24 +736,24 @@ public:
     //! the default constructor
     CV_WRAP KeyPoint();
     /**
-    @param _pt x & y coordinates of the keypoint
-    @param _size keypoint diameter
-    @param _angle keypoint orientation
-    @param _response keypoint detector response on the keypoint (that is, strength of the keypoint)
-    @param _octave pyramid octave in which the keypoint has been detected
-    @param _class_id object id
+    @param pt x & y coordinates of the keypoint
+    @param size keypoint diameter
+    @param angle keypoint orientation
+    @param response keypoint detector response on the keypoint (that is, strength of the keypoint)
+    @param octave pyramid octave in which the keypoint has been detected
+    @param class_id object id
      */
-    KeyPoint(Point2f _pt, float _size, float _angle=-1, float _response=0, int _octave=0, int _class_id=-1);
+    KeyPoint(Point2f pt, float size, float angle=-1, float response=0, int octave=0, int class_id=-1);
     /**
     @param x x-coordinate of the keypoint
     @param y y-coordinate of the keypoint
-    @param _size keypoint diameter
-    @param _angle keypoint orientation
-    @param _response keypoint detector response on the keypoint (that is, strength of the keypoint)
-    @param _octave pyramid octave in which the keypoint has been detected
-    @param _class_id object id
+    @param size keypoint diameter
+    @param angle keypoint orientation
+    @param response keypoint detector response on the keypoint (that is, strength of the keypoint)
+    @param octave pyramid octave in which the keypoint has been detected
+    @param class_id object id
      */
-    CV_WRAP KeyPoint(float x, float y, float _size, float _angle=-1, float _response=0, int _octave=0, int _class_id=-1);
+    CV_WRAP KeyPoint(float x, float y, float size, float angle=-1, float response=0, int octave=0, int class_id=-1);
 
     size_t hash() const;
 
@@ -856,6 +892,13 @@ public:
     @param epsilon The desired accuracy or change in parameters at which the iterative algorithm stops.
     */
     TermCriteria(int type, int maxCount, double epsilon);
+
+    inline bool isValid() const
+    {
+        const bool isCount = (type & COUNT) && maxCount > 0;
+        const bool isEps = (type & EPS) && !cvIsNaN(epsilon);
+        return isCount || isEps;
+    }
 
     int type; //!< the type of termination criteria: COUNT, EPS or COUNT + EPS
     int maxCount; //!< the maximum number of iterations/elements
@@ -1143,9 +1186,11 @@ template<typename _Tp> inline
 Point_<_Tp>::Point_(_Tp _x, _Tp _y)
     : x(_x), y(_y) {}
 
+#if (defined(__GNUC__) && __GNUC__ < 5) && !defined(__clang__)  // GCC 4.x bug. Details: https://github.com/opencv/opencv/pull/20837
 template<typename _Tp> inline
 Point_<_Tp>::Point_(const Point_& pt)
     : x(pt.x), y(pt.y) {}
+#endif
 
 template<typename _Tp> inline
 Point_<_Tp>::Point_(const Size_<_Tp>& sz)
@@ -1155,12 +1200,14 @@ template<typename _Tp> inline
 Point_<_Tp>::Point_(const Vec<_Tp,2>& v)
     : x(v[0]), y(v[1]) {}
 
+#if (defined(__GNUC__) && __GNUC__ < 5) && !defined(__clang__)  // GCC 4.x bug. Details: https://github.com/opencv/opencv/pull/20837
 template<typename _Tp> inline
 Point_<_Tp>& Point_<_Tp>::operator = (const Point_& pt)
 {
     x = pt.x; y = pt.y;
     return *this;
 }
+#endif
 
 template<typename _Tp> template<typename _Tp2> inline
 Point_<_Tp>::operator Point_<_Tp2>() const
@@ -1183,7 +1230,7 @@ _Tp Point_<_Tp>::dot(const Point_& pt) const
 template<typename _Tp> inline
 double Point_<_Tp>::ddot(const Point_& pt) const
 {
-    return (double)x*pt.x + (double)y*pt.y;
+    return (double)x*(double)(pt.x) + (double)y*(double)(pt.y);
 }
 
 template<typename _Tp> inline
@@ -1400,10 +1447,6 @@ Point3_<_Tp>::Point3_(_Tp _x, _Tp _y, _Tp _z)
     : x(_x), y(_y), z(_z) {}
 
 template<typename _Tp> inline
-Point3_<_Tp>::Point3_(const Point3_& pt)
-    : x(pt.x), y(pt.y), z(pt.z) {}
-
-template<typename _Tp> inline
 Point3_<_Tp>::Point3_(const Point_<_Tp>& pt)
     : x(pt.x), y(pt.y), z(_Tp()) {}
 
@@ -1421,13 +1464,6 @@ template<typename _Tp> inline
 Point3_<_Tp>::operator Vec<_Tp, 3>() const
 {
     return Vec<_Tp, 3>(x, y, z);
-}
-
-template<typename _Tp> inline
-Point3_<_Tp>& Point3_<_Tp>::operator = (const Point3_& pt)
-{
-    x = pt.x; y = pt.y; z = pt.z;
-    return *this;
 }
 
 template<typename _Tp> inline
@@ -1643,10 +1679,6 @@ Size_<_Tp>::Size_(_Tp _width, _Tp _height)
     : width(_width), height(_height) {}
 
 template<typename _Tp> inline
-Size_<_Tp>::Size_(const Size_& sz)
-    : width(sz.width), height(sz.height) {}
-
-template<typename _Tp> inline
 Size_<_Tp>::Size_(const Point_<_Tp>& pt)
     : width(pt.x), height(pt.y) {}
 
@@ -1654,13 +1686,6 @@ template<typename _Tp> template<typename _Tp2> inline
 Size_<_Tp>::operator Size_<_Tp2>() const
 {
     return Size_<_Tp2>(saturate_cast<_Tp2>(width), saturate_cast<_Tp2>(height));
-}
-
-template<typename _Tp> inline
-Size_<_Tp>& Size_<_Tp>::operator = (const Size_<_Tp>& sz)
-{
-    width = sz.width; height = sz.height;
-    return *this;
 }
 
 template<typename _Tp> inline
@@ -1774,10 +1799,6 @@ Rect_<_Tp>::Rect_(_Tp _x, _Tp _y, _Tp _width, _Tp _height)
     : x(_x), y(_y), width(_width), height(_height) {}
 
 template<typename _Tp> inline
-Rect_<_Tp>::Rect_(const Rect_<_Tp>& r)
-    : x(r.x), y(r.y), width(r.width), height(r.height) {}
-
-template<typename _Tp> inline
 Rect_<_Tp>::Rect_(const Point_<_Tp>& org, const Size_<_Tp>& sz)
     : x(org.x), y(org.y), width(sz.width), height(sz.height) {}
 
@@ -1788,16 +1809,6 @@ Rect_<_Tp>::Rect_(const Point_<_Tp>& pt1, const Point_<_Tp>& pt2)
     y = std::min(pt1.y, pt2.y);
     width = std::max(pt1.x, pt2.x) - x;
     height = std::max(pt1.y, pt2.y) - y;
-}
-
-template<typename _Tp> inline
-Rect_<_Tp>& Rect_<_Tp>::operator = ( const Rect_<_Tp>& r )
-{
-    x = r.x;
-    y = r.y;
-    width = r.width;
-    height = r.height;
-    return *this;
 }
 
 template<typename _Tp> inline
@@ -1873,21 +1884,44 @@ Rect_<_Tp>& operator += ( Rect_<_Tp>& a, const Size_<_Tp>& b )
 template<typename _Tp> static inline
 Rect_<_Tp>& operator -= ( Rect_<_Tp>& a, const Size_<_Tp>& b )
 {
-    a.width -= b.width;
-    a.height -= b.height;
+    const _Tp width = a.width - b.width;
+    const _Tp height = a.height - b.height;
+    CV_DbgAssert(width >= 0 && height >= 0);
+    a.width = width;
+    a.height = height;
     return a;
 }
 
 template<typename _Tp> static inline
 Rect_<_Tp>& operator &= ( Rect_<_Tp>& a, const Rect_<_Tp>& b )
 {
-    _Tp x1 = std::max(a.x, b.x);
-    _Tp y1 = std::max(a.y, b.y);
-    a.width = std::min(a.x + a.width, b.x + b.width) - x1;
-    a.height = std::min(a.y + a.height, b.y + b.height) - y1;
-    a.x = x1;
-    a.y = y1;
-    if( a.width <= 0 || a.height <= 0 )
+    if (a.empty() || b.empty()) {
+        a = Rect();
+        return a;
+    }
+    const Rect_<_Tp>& Rx_min = (a.x < b.x) ? a : b;
+    const Rect_<_Tp>& Rx_max = (a.x < b.x) ? b : a;
+    const Rect_<_Tp>& Ry_min = (a.y < b.y) ? a : b;
+    const Rect_<_Tp>& Ry_max = (a.y < b.y) ? b : a;
+    // Looking at the formula below, we will compute Rx_min.width - (Rx_max.x - Rx_min.x)
+    // but we want to avoid overflows. Rx_min.width >= 0 and (Rx_max.x - Rx_min.x) >= 0
+    // by definition so the difference does not overflow. The only thing that can overflow
+    // is (Rx_max.x - Rx_min.x). And it can only overflow if Rx_min.x < 0.
+    // Let us first deal with the following case.
+    if ((Rx_min.x < 0 && Rx_min.x + Rx_min.width < Rx_max.x) ||
+        (Ry_min.y < 0 && Ry_min.y + Ry_min.height < Ry_max.y)) {
+        a = Rect();
+        return a;
+    }
+    // We now know that either Rx_min.x >= 0, or
+    // Rx_min.x < 0 && Rx_min.x + Rx_min.width >= Rx_max.x and therefore
+    // Rx_min.width >= (Rx_max.x - Rx_min.x) which means (Rx_max.x - Rx_min.x)
+    // is inferior to a valid int and therefore does not overflow.
+    a.width = std::min(Rx_min.width - (Rx_max.x - Rx_min.x), Rx_max.width);
+    a.height = std::min(Ry_min.height - (Ry_max.y - Ry_min.y), Ry_max.height);
+    a.x = Rx_max.x;
+    a.y = Ry_max.y;
+    if (a.empty())
         a = Rect();
     return a;
 }
@@ -1940,6 +1974,15 @@ Rect_<_Tp> operator + (const Rect_<_Tp>& a, const Size_<_Tp>& b)
 }
 
 template<typename _Tp> static inline
+Rect_<_Tp> operator - (const Rect_<_Tp>& a, const Size_<_Tp>& b)
+{
+    const _Tp width = a.width - b.width;
+    const _Tp height = a.height - b.height;
+    CV_DbgAssert(width >= 0 && height >= 0);
+    return Rect_<_Tp>( a.x, a.y, width, height );
+}
+
+template<typename _Tp> static inline
 Rect_<_Tp> operator & (const Rect_<_Tp>& a, const Rect_<_Tp>& b)
 {
     Rect_<_Tp> c = a;
@@ -1983,8 +2026,6 @@ RotatedRect::RotatedRect()
 inline
 RotatedRect::RotatedRect(const Point2f& _center, const Size2f& _size, float _angle)
     : center(_center), size(_size), angle(_angle) {}
-
-
 
 ///////////////////////////////// Range /////////////////////////////////
 
@@ -2083,6 +2124,36 @@ Scalar_<_Tp>::Scalar_(_Tp v0, _Tp v1, _Tp v2, _Tp v3)
     this->val[1] = v1;
     this->val[2] = v2;
     this->val[3] = v3;
+}
+
+template<typename _Tp> inline
+Scalar_<_Tp>::Scalar_(const Scalar_<_Tp>& s) : Vec<_Tp, 4>(s) {
+}
+
+template<typename _Tp> inline
+Scalar_<_Tp>::Scalar_(Scalar_<_Tp>&& s) CV_NOEXCEPT {
+    this->val[0] = std::move(s.val[0]);
+    this->val[1] = std::move(s.val[1]);
+    this->val[2] = std::move(s.val[2]);
+    this->val[3] = std::move(s.val[3]);
+}
+
+template<typename _Tp> inline
+Scalar_<_Tp>& Scalar_<_Tp>::operator=(const Scalar_<_Tp>& s) {
+    this->val[0] = s.val[0];
+    this->val[1] = s.val[1];
+    this->val[2] = s.val[2];
+    this->val[3] = s.val[3];
+    return *this;
+}
+
+template<typename _Tp> inline
+Scalar_<_Tp>& Scalar_<_Tp>::operator=(Scalar_<_Tp>&& s) CV_NOEXCEPT {
+    this->val[0] = std::move(s.val[0]);
+    this->val[1] = std::move(s.val[1]);
+    this->val[2] = std::move(s.val[2]);
+    this->val[3] = std::move(s.val[3]);
+    return *this;
 }
 
 template<typename _Tp> template<typename _Tp2, int cn> inline

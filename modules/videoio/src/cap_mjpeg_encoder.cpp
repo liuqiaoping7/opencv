@@ -158,8 +158,9 @@ public:
         data.resize(size);
     }
 
-    void put(unsigned bits, int len)
+    inline void put_bits(unsigned bits, int len)
     {
+        CV_Assert(len >=0 && len < 32);
         if((m_pos == (data.size() - 1) && len > bits_free) || m_pos == data.size())
         {
             resize(int(2*data.size()));
@@ -180,6 +181,12 @@ public:
         {
             data[m_pos] |= (bits_free == 32) ? tempval : (tempval << bits_free);
         }
+    }
+
+    inline void put_val(int val, const unsigned * table)
+    {
+        unsigned code = table[(val) + 2];
+        put_bits(code >> 8, (int)(code & 255));
     }
 
     void finish()
@@ -395,6 +402,8 @@ public:
         nstripes = -1;
     }
     ~MotionJpegWriter() { close(); }
+
+    virtual int getCaptureDomain() const CV_OVERRIDE { return cv::CAP_OPENCV_MJPEG; }
 
     void close()
     {
@@ -1158,6 +1167,8 @@ public:
         fdct_qtab(_fdct_qtab),
         cat_table(_cat_table)
     {
+#if 0  // disable parallel processing due to buffer overrun bug: https://github.com/opencv/opencv/issues/19634
+
         //empirically found value. if number of pixels is less than that value there is no sense to parallelize it.
         const int min_pixels_count = 96*96;
 
@@ -1167,6 +1178,7 @@ public:
         {
             if(height*width > min_pixels_count)
             {
+                const int default_stripes_count = 4;
                 stripes_count = default_stripes_count;
             }
         }
@@ -1182,19 +1194,18 @@ public:
 
         stripes_count = std::min(stripes_count, max_stripes);
 
+#else
+        if (nstripes > 1)
+            CV_LOG_ONCE_WARNING(NULL, "VIDEOIO/MJPEG: parallel processing is disabled: https://github.com/opencv/opencv/issues/19634");
+        stripes_count = 1;
+#endif
+
         m_buffer_list.allocate_buffers(stripes_count, (height*width*2)/stripes_count);
     }
 
     void operator()( const cv::Range& range ) const CV_OVERRIDE
     {
         const int CAT_TAB_SIZE = 4096;
-        unsigned code = 0;
-
-#define JPUT_BITS(val, bits) output_buffer.put(val, bits)
-
-#define JPUT_HUFF(val, table) \
-    code = table[(val) + 2]; \
-    JPUT_BITS(code >> 8, (int)(code & 255))
 
         int x, y;
         int i, j;
@@ -1300,8 +1311,8 @@ public:
                             int cat = cat_table[val + CAT_TAB_SIZE];
 
                             //CV_Assert( cat <= 11 );
-                            JPUT_HUFF( cat, huff_dc_tab[is_chroma] );
-                            JPUT_BITS( val - (val < 0 ? 1 : 0), cat );
+                            output_buffer.put_val(cat, huff_dc_tab[is_chroma] );
+                            output_buffer.put_bits( val - (val < 0 ? 1 : 0), cat );
                         }
 
                         for( j = 1; j < 64; j++ )
@@ -1316,15 +1327,15 @@ public:
                             {
                                 while( run >= 16 )
                                 {
-                                    JPUT_HUFF( 0xF0, htable ); // encode 16 zeros
+                                    output_buffer.put_val( 0xF0, htable ); // encode 16 zeros
                                     run -= 16;
                                 }
 
                                 {
                                     int cat = cat_table[val + CAT_TAB_SIZE];
                                     //CV_Assert( cat <= 10 );
-                                    JPUT_HUFF( cat + run*16, htable );
-                                    JPUT_BITS( val - (val < 0 ? 1 : 0), cat );
+                                    output_buffer.put_val( cat + run*16, htable );
+                                    output_buffer.put_bits( val - (val < 0 ? 1 : 0), cat );
                                 }
 
                                 run = 0;
@@ -1333,7 +1344,7 @@ public:
 
                         if( run )
                         {
-                            JPUT_HUFF( 0x00, htable ); // encode EOB
+                            output_buffer.put_val( 0x00, htable ); // encode EOB
                         }
                     }
                 }
@@ -1368,10 +1379,7 @@ private:
     const short (&fdct_qtab)[2][64];
     const uchar* cat_table;
     int stripes_count;
-    static const int default_stripes_count;
 };
-
-const int MjpegEncoder::default_stripes_count = 4;
 
 void MotionJpegWriter::writeFrameData( const uchar* data, int step, int colorspace, int input_channels )
 {
@@ -1530,12 +1538,15 @@ void MotionJpegWriter::writeFrameData( const uchar* data, int step, int colorspa
 
 }
 
-Ptr<IVideoWriter> createMotionJpegWriter(const String& filename, int fourcc, double fps, Size frameSize, bool iscolor)
+Ptr<IVideoWriter> createMotionJpegWriter(const std::string& filename, int fourcc,
+                                         double fps, const Size& frameSize,
+                                         const VideoWriterParameters& params)
 {
     if (fourcc != CV_FOURCC('M', 'J', 'P', 'G'))
         return Ptr<IVideoWriter>();
 
-    Ptr<IVideoWriter> iwriter = makePtr<mjpeg::MotionJpegWriter>(filename, fps, frameSize, iscolor);
+    const bool isColor = params.get(VIDEOWRITER_PROP_IS_COLOR, true);
+    Ptr<IVideoWriter> iwriter = makePtr<mjpeg::MotionJpegWriter>(filename, fps, frameSize, isColor);
     if( !iwriter->isOpened() )
         iwriter.release();
     return iwriter;

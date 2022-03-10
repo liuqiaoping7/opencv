@@ -289,7 +289,7 @@ PARAM_TEST_CASE(Resize, MatType, double, double, Interpolation, bool, int)
         dstRoiSize.width = cvRound(srcRoiSize.width * fx);
         dstRoiSize.height = cvRound(srcRoiSize.height * fy);
 
-        if (dstRoiSize.area() == 0)
+        if (dstRoiSize.empty())
         {
             random_roi();
             return;
@@ -326,6 +326,20 @@ OCL_TEST_P(Resize, Mat)
         OCL_EXPECT_MAT_N_DIFF(dst, eps);
     }
 }
+
+OCL_TEST(Resize, overflow_21198)
+{
+    Mat src(Size(600, 600), CV_16UC3, Scalar::all(32768));
+    UMat src_u;
+    src.copyTo(src_u);
+
+    Mat dst;
+    cv::resize(src, dst, Size(1024, 1024), 0, 0, INTER_LINEAR);
+    UMat dst_u;
+    cv::resize(src_u, dst_u, Size(1024, 1024), 0, 0, INTER_LINEAR);
+    EXPECT_LE(cv::norm(dst_u, dst, NORM_INF), 1.0f);
+}
+
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // remap

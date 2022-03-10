@@ -42,12 +42,12 @@ class SURFFLANNMatching {
         matcher.knnMatch(descriptors1, descriptors2, knnMatches, 2);
 
         //-- Filter matches using the Lowe's ratio test
-        float ratio_thresh = 0.7f;
+        float ratioThresh = 0.7f;
         List<DMatch> listOfGoodMatches = new ArrayList<>();
         for (int i = 0; i < knnMatches.size(); i++) {
             if (knnMatches.get(i).rows() > 1) {
                 DMatch[] matches = knnMatches.get(i).toArray();
-                if (matches[0].distance / matches[1].distance <= ratio_thresh) {
+                if (matches[0].distance < ratioThresh * matches[1].distance) {
                     listOfGoodMatches.add(matches[0]);
                 }
             }
@@ -58,7 +58,7 @@ class SURFFLANNMatching {
         //-- Draw matches
         Mat imgMatches = new Mat();
         Features2d.drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, imgMatches, Scalar.all(-1),
-                Scalar.all(-1), new MatOfByte(), Features2d.NOT_DRAW_SINGLE_POINTS);
+                Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
 
         //-- Show detected matches
         HighGui.imshow("Good Matches", imgMatches);
