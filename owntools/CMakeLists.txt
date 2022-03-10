@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 2.8)
+project( owntools )
+
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /MT")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+
+aux_source_directory (${CMAKE_CURRENT_SOURCE_DIR} TEST_SRC)
+foreach(src ${TEST_SRC})
+   get_filename_component( exe ${src} NAME_WE )
+   add_executable( ${exe} ${src} )
+   target_link_libraries( ${exe} ${OpenCV_LIBS} )
+endforeach()
