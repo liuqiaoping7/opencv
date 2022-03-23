@@ -38,7 +38,7 @@ if defined VS2019_HOME (
 		call "%VS2019_HOME%\VC\Auxiliary\Build\vcvarsall.bat" %ARCH%
 		IF %ERRORLEVEL% NEQ 0 EXIT /B %ERRORLEVEL%
 	)
-    cmake -G "Visual Studio 16 2019" -A %AARCH% -B%BUILD_DIR% -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% -DBUILD_SHARED_LIBS=OFF -H%TOP_DIR%
+    cmake -G "Visual Studio 16 2019" -A %AARCH% -B%BUILD_DIR% -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% -DBUILD_SHARED_LIBS=OFF -DBUILD_PROTOBUF=OFF -DBUILD_opencv_dnn=OFF -H%TOP_DIR%
     cmake --build %BUILD_DIR% --config %BUILD_TYPE% --target install
 )
 goto :eof
