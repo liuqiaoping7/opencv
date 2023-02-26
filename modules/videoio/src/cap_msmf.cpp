@@ -1881,10 +1881,10 @@ const GUID CvVideoWriter_MSMF::FourCC2GUID(int fourcc)
             return MFVideoFormat_DVSD; break;
         case CV_FOURCC_MACRO('d', 'v', 's', 'l'):
                 return MFVideoFormat_DVSL; break;
-#if (WINVER >= 0x0602)
-        case CV_FOURCC_MACRO('H', '2', '6', '3'):   // Available only for Win 8 target.
-                return MFVideoFormat_H263; break;
-#endif
+// #if (WINVER >= 0x0602)
+//         case CV_FOURCC_MACRO('H', '2', '6', '3'):   // Available only for Win 8 target.
+//                 return MFVideoFormat_H263; break;
+// #endif
         case CV_FOURCC_MACRO('H', '2', '6', '4'):
                 return MFVideoFormat_H264; break;
         case CV_FOURCC_MACRO('M', '4', 'S', '2'):
