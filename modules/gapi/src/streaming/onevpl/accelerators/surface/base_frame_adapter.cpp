@@ -15,8 +15,11 @@ namespace cv {
 namespace gapi {
 namespace wip {
 namespace onevpl {
-BaseFrameAdapter::BaseFrameAdapter(std::shared_ptr<Surface> surface, SessionHandle assoc_handle):
-    parent_surface_ptr(surface), parent_handle(assoc_handle) {
+BaseFrameAdapter::BaseFrameAdapter(std::shared_ptr<Surface> surface,
+                                   SessionHandle assoc_handle,
+                                   AccelType accel):
+    parent_surface_ptr(surface), parent_handle(assoc_handle),
+    acceleration_type(accel) {
     GAPI_Assert(parent_surface_ptr && "Surface is nullptr");
     GAPI_Assert(parent_handle && "mfxSession is nullptr");
 
@@ -56,13 +59,17 @@ std::shared_ptr<Surface> BaseFrameAdapter::surface() {
     return parent_surface_ptr;
 }
 
-const BaseFrameAdapter::SessionHandle BaseFrameAdapter::get_session_handle() const {
+BaseFrameAdapter::SessionHandle BaseFrameAdapter::get_session_handle() const {
     return parent_handle;
 }
 
 cv::GFrameDesc BaseFrameAdapter::meta() const {
     return frame_desc;
 }
+AccelType BaseFrameAdapter::accel_type() const {
+    return acceleration_type;
+}
+
 } // namespace onevpl
 } // namespace wip
 } // namespace gapi

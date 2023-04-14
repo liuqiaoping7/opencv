@@ -18,7 +18,7 @@ namespace onevpl {
 
 VPLMediaFrameCPUAdapter::VPLMediaFrameCPUAdapter(std::shared_ptr<Surface> surface,
                                                  SessionHandle assoc_handle):
-    BaseFrameAdapter(surface, assoc_handle) {
+    BaseFrameAdapter(surface, assoc_handle, AccelType::HOST) {
 }
 
 VPLMediaFrameCPUAdapter::~VPLMediaFrameCPUAdapter() = default;
@@ -64,8 +64,7 @@ MediaFrame::View VPLMediaFrameCPUAdapter::access(MediaFrame::Access) {
 }
 
 cv::util::any VPLMediaFrameCPUAdapter::blobParams() const {
-    GAPI_Assert("VPLMediaFrameCPUAdapter::blobParams() is not implemented");
-    return {};
+    throw std::runtime_error("VPLMediaFrameCPUAdapter::blobParams() is not implemented");
 }
 
 void VPLMediaFrameCPUAdapter::serialize(cv::gapi::s11n::IOStream&) {

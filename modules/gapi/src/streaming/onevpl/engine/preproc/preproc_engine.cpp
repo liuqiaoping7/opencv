@@ -34,8 +34,8 @@ bool FrameInfoComparator::equal_to(const mfxFrameInfo& lhs, const mfxFrameInfo& 
     return lhs == rhs;
 }
 
-void apply_roi(mfxFrameSurface1* surface_handle,
-               const cv::util::optional<cv::Rect> &opt_roi) {
+static void apply_roi(mfxFrameSurface1* surface_handle,
+                      const cv::util::optional<cv::Rect> &opt_roi) {
     if (opt_roi.has_value()) {
         const cv::Rect &roi = opt_roi.value();
         surface_handle->Info.CropX = static_cast<mfxU16>(roi.x);
@@ -51,7 +51,7 @@ void apply_roi(mfxFrameSurface1* surface_handle,
 
 VPPPreprocEngine::VPPPreprocEngine(std::unique_ptr<VPLAccelerationPolicy>&& accel) :
     ProcessingEngineBase(std::move(accel)) {
-    GAPI_LOG_INFO(nullptr, "Create VPP preprocessing engine");
+    GAPI_LOG_DEBUG(nullptr, "Create VPP preprocessing engine");
     preprocessed_frames_count = 0;
     create_pipeline(
         // 0) preproc decoded surface with VPP params
@@ -147,7 +147,7 @@ VPPPreprocEngine::VPPPreprocEngine(std::unique_ptr<VPLAccelerationPolicy>&& acce
             } while (MFX_ERR_NONE == sess.last_status && !my_sess.vpp_out_queue.empty());
             return ExecutionStatus::Continue;
         },
-        // 2) Falls back on generic status procesing
+        // 2) Falls back on generic status processing
         [this] (EngineSession& sess) -> ExecutionStatus
         {
             return this->process_error(sess.last_status, static_cast<session_type&>(sess));
@@ -163,7 +163,8 @@ cv::util::optional<pp_params> VPPPreprocEngine::is_applicable(const cv::MediaFra
     if (vpl_adapter) {
         ret = cv::util::make_optional<pp_params>(
                         pp_params::create<vpp_pp_params>(vpl_adapter->get_session_handle(),
-                                                         vpl_adapter->get_surface()->get_info()));
+                                                         vpl_adapter->get_surface()->get_info(),
+                                                         vpl_adapter));
         GAPI_LOG_DEBUG(nullptr, "VPP preprocessing applicable, session [" <<
                                 vpl_adapter->get_session_handle() << "]");
     }
@@ -175,7 +176,8 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
     const vpp_pp_params &params = initial_frame_param.get<vpp_pp_params>();
 
     // adjust preprocessing settings
-    mfxVideoParam mfxVPPParams{0};
+    mfxVideoParam mfxVPPParams{};
+    memset(&mfxVPPParams, 0, sizeof(mfxVideoParam));
     // NB: IN params for VPP session must be equal to decoded surface params
     mfxVPPParams.vpp.In = params.info;
 
@@ -203,7 +205,7 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
     // check In & Out equally to bypass preproc
     if (mfxVPPParams.vpp.Out == mfxVPPParams.vpp.In) {
         GAPI_LOG_DEBUG(nullptr, "no preproc required");
-        return pp_session::create<EngineSession>(nullptr);
+        return pp_session::create<vpp_pp_session>(nullptr);
     }
 
     // recalculate size param according to VPP alignment
@@ -221,7 +223,7 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
     auto it = preproc_session_map.find(mfxVPPParams.vpp.In);
     if (it != preproc_session_map.end()) {
         GAPI_LOG_DEBUG(nullptr, "[" << it->second->session << "] found");
-        return pp_session::create(std::static_pointer_cast<EngineSession>(it->second));
+        return pp_session::create<vpp_pp_session>(std::static_pointer_cast<EngineSession>(it->second));
     }
 
     // NB: make some sanity checks
@@ -247,13 +249,13 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
     sts = MFXCreateSession(mfx_handle, impl_number, &mfx_vpp_session);
     if (sts != MFX_ERR_NONE) {
         GAPI_LOG_WARNING(nullptr, "Cannot clone VPP session, error: " << mfxstatus_to_string(sts));
-        GAPI_Assert(false && "Cannot continue VPP preprocessing");
+        GAPI_Error("Cannot continue VPP preprocessing");
     }
 
     sts = MFXJoinSession(params.handle, mfx_vpp_session);
     if (sts != MFX_ERR_NONE) {
         GAPI_LOG_WARNING(nullptr, "Cannot join VPP sessions, error: " << mfxstatus_to_string(sts));
-        GAPI_Assert(false && "Cannot continue VPP preprocessing");
+        GAPI_Error("Cannot continue VPP preprocessing");
     }
 
     GAPI_LOG_INFO(nullptr, "[" << mfx_vpp_session << "] starting pool allocation");
@@ -272,14 +274,14 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
                 throw std::runtime_error("Cannot execute MFXVideoVPP_QueryIOSurf");
             }
 
-            // NB: Assing ID as upper limit descendant to distinguish specific VPP allocation
+            // NB: Assign ID as upper limit descendant to distinguish specific VPP allocation
             // from decode allocations witch started from 0: by local module convention
 
             static uint16_t request_id = 0;
             vppRequests[1].AllocId = std::numeric_limits<uint16_t>::max() - request_id++;
             GAPI_Assert(request_id != std::numeric_limits<uint16_t>::max() && "Something wrong");
 
-            vppRequests[1].Type |= MFX_MEMTYPE_FROM_VPPIN;
+            vppRequests[1].Type |= MFX_MEMTYPE_FROM_VPPIN | MFX_MEMTYPE_SHARED_RESOURCE;
             vpp_out_pool_key = acceleration_policy->create_surface_pool(vppRequests[1],
                                                                         mfxVPPParams.vpp.Out);
 
@@ -299,7 +301,7 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
         }
     } catch (const std::exception&) {
         MFXClose(mfx_vpp_session);
-        GAPI_Assert(false && "Cannot init preproc resources");
+        GAPI_Error("Cannot init preproc resources");
     }
 
     // create engine session after all
@@ -311,7 +313,7 @@ pp_session VPPPreprocEngine::initialize_preproc(const pp_params& initial_frame_p
     bool inserted = preproc_session_map.emplace(mfxVPPParams.vpp.In, sess_ptr).second;
     GAPI_Assert(inserted && "preproc session is exist");
     GAPI_LOG_INFO(nullptr, "VPPPreprocSession created, total sessions: " << preproc_session_map.size());
-    return pp_session::create(std::static_pointer_cast<EngineSession>(sess_ptr));
+    return pp_session::create<vpp_pp_session>(std::static_pointer_cast<EngineSession>(sess_ptr));
 }
 
 void VPPPreprocEngine::on_frame_ready(session_type& sess,
@@ -339,12 +341,12 @@ VPPPreprocEngine::initialize_session(mfxSession,
 
 cv::MediaFrame VPPPreprocEngine::run_sync(const pp_session& sess, const cv::MediaFrame& in_frame,
                                           const cv::util::optional<cv::Rect> &roi) {
-    std::shared_ptr<EngineSession> pp_sess_impl = sess.get<EngineSession>();
-    if (!pp_sess_impl) {
+    vpp_pp_session pp_sess_impl = sess.get<vpp_pp_session>();
+    if (!pp_sess_impl.handle) {
         // bypass case
         return in_frame;
     }
-    session_ptr_type s = std::static_pointer_cast<session_type>(pp_sess_impl);
+    session_ptr_type s = std::static_pointer_cast<session_type>(pp_sess_impl.handle);
     GAPI_DbgAssert(s && "Session is nullptr");
     GAPI_DbgAssert(is_applicable(in_frame) &&
                    "VPP preproc is not applicable for the given frame");
@@ -454,7 +456,7 @@ ProcessingEngineBase::ExecutionStatus VPPPreprocEngine::process_error(mfxStatus 
                                     "MFX_ERR_REALLOC_SURFACE is not processed");
             break;
         case MFX_WRN_IN_EXECUTION:
-            GAPI_LOG_WARNING(nullptr, "[" << sess.session << "] got MFX_WRN_IN_EXECUTION");
+            GAPI_LOG_DEBUG(nullptr, "[" << sess.session << "] got MFX_WRN_IN_EXECUTION");
             return ExecutionStatus::Continue;
         default:
             GAPI_LOG_WARNING(nullptr, "Unknown status code: " << mfxstatus_to_string(status) <<

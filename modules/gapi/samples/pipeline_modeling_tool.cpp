@@ -10,7 +10,9 @@
 #include <opencv2/core/utils/filesystem.hpp>
 
 #if defined(_WIN32)
+#define NOMINMAX
 #include <windows.h>
+#undef NOMINMAX
 #endif
 
 #include "pipeline_modeling_tool/dummy_source.hpp"
@@ -30,6 +32,22 @@ static AppMode strToAppMode(const std::string& mode_str) {
     } else {
         throw std::logic_error("Unsupported AppMode: " + mode_str +
                 "\nPlease chose between: realtime and benchmark");
+    }
+}
+
+enum class WaitMode {
+    BUSY,
+    SLEEP
+};
+
+static WaitMode strToWaitMode(const std::string& mode_str) {
+    if (mode_str == "sleep") {
+        return WaitMode::SLEEP;
+    } else if (mode_str == "busy") {
+        return WaitMode::BUSY;
+    } else {
+        throw std::logic_error("Unsupported wait mode: " + mode_str +
+                "\nPlease chose between: busy (default) and sleep");
     }
 }
 
@@ -173,6 +191,76 @@ static PLMode strToPLMode(const std::string& mode_str) {
     }
 }
 
+static cv::gapi::ie::InferMode strToInferMode(const std::string& infer_mode) {
+    if (infer_mode == "async") {
+        return cv::gapi::ie::InferMode::Async;
+    } else if (infer_mode == "sync") {
+        return cv::gapi::ie::InferMode::Sync;
+    } else {
+        throw std::logic_error("Unsupported Infer mode: " + infer_mode +
+                "\nPlease chose between: async and sync");
+    }
+}
+
+template <>
+CallParams read<CallParams>(const cv::FileNode& fn) {
+    auto name =
+        check_and_read<std::string>(fn, "name", "node");
+    // FIXME: Impossible to read size_t due OpenCV limitations.
+    auto call_every_nth_opt = readOpt<int>(fn["call_every_nth"]);
+    auto call_every_nth = call_every_nth_opt.value_or(1);
+    if (call_every_nth <= 0) {
+        throw std::logic_error(
+                name + " call_every_nth must be greater than zero\n"
+                "Current call_every_nth: " + std::to_string(call_every_nth));
+    }
+    return CallParams{std::move(name), static_cast<size_t>(call_every_nth)};
+}
+
+template <typename V>
+std::map<std::string, V> readMap(const cv::FileNode& fn) {
+    std::map<std::string, V> map;
+    for (auto item : fn) {
+        map.emplace(item.name(), read<V>(item));
+    }
+    return map;
+}
+
+template <>
+InferParams read<InferParams>(const cv::FileNode& fn) {
+    auto name =
+        check_and_read<std::string>(fn, "name", "node");
+
+    InferParams params;
+    params.path          = read<ModelPath>(fn);
+    params.device        = check_and_read<std::string>(fn, "device", name);
+    params.input_layers  = readList<std::string>(fn, "input_layers", name);
+    params.output_layers = readList<std::string>(fn, "output_layers", name);
+    params.config        = readMap<std::string>(fn["config"]);
+
+    auto out_prec_str = readOpt<std::string>(fn["output_precision"]);
+    if (out_prec_str.has_value()) {
+        params.out_precision =
+            cv::optional<int>(strToPrecision(out_prec_str.value()));
+    }
+    return params;
+}
+
+template <>
+DummyParams read<DummyParams>(const cv::FileNode& fn) {
+    auto name =
+        check_and_read<std::string>(fn, "name", "node");
+
+    DummyParams params;
+    params.time = check_and_read<double>(fn, "time", name);
+    if (params.time < 0) {
+        throw std::logic_error(name + " time must be positive");
+    }
+    params.output = check_and_read<OutputDescr>(fn, "output", name);
+
+    return params;
+}
+
 static std::vector<std::string> parseExecList(const std::string& exec_list) {
     std::vector<std::string> pl_types;
     std::stringstream ss(exec_list);
@@ -224,9 +312,11 @@ int main(int argc, char* argv[]) {
                                    " if set to 0. If it's specified will be"
                                    " applied for every pipeline. }"
         "{ app_mode    | realtime  | Application mode (realtime/benchmark). }"
+        "{ drop_frames | false     | Drop frames if they come earlier than pipeline is completed. }"
         "{ exec_list   |           | A comma-separated list of pipelines that"
                                    " will be executed. Spaces around commas"
-                                   " are prohibited. }";
+                                   " are prohibited. }"
+        "{ infer_mode  | async     | OpenVINO inference mode (async/sync). }";
 
         cv::CommandLineParser cmd(argc, argv, keys);
         if (cmd.has("help")) {
@@ -238,10 +328,12 @@ int main(int argc, char* argv[]) {
         const auto load_config = cmd.get<std::string>("load_config");
         const auto cached_dir  = cmd.get<std::string>("cache_dir");
         const auto log_file    = cmd.get<std::string>("log_file");
-        const auto pl_mode     = strToPLMode(cmd.get<std::string>("pl_mode"));
+        const auto cmd_pl_mode = strToPLMode(cmd.get<std::string>("pl_mode"));
         const auto qc          = cmd.get<int>("qc");
         const auto app_mode    = strToAppMode(cmd.get<std::string>("app_mode"));
         const auto exec_str    = cmd.get<std::string>("exec_list");
+        const auto infer_mode  = strToInferMode(cmd.get<std::string>("infer_mode"));
+        const auto drop_frames = cmd.get<bool>("drop_frames");
 
         cv::FileStorage fs;
         if (cfg.empty()) {
@@ -261,20 +353,24 @@ int main(int argc, char* argv[]) {
                                       cv::FileStorage::MEMORY);
         }
 
-        std::map<std::string, std::string> config;
+        std::map<std::string, std::string> gconfig;
         if (!load_config.empty()) {
-            loadConfig(load_config, config);
+            loadConfig(load_config, gconfig);
         }
         // NB: Takes priority over config from file
         if (!cached_dir.empty()) {
-            config =
+            gconfig =
                 std::map<std::string, std::string>{{"CACHE_DIR", cached_dir}};
         }
 
-        const double work_time_ms =
-            check_and_read<double>(fs, "work_time", "Config");
-        if (work_time_ms < 0) {
-            throw std::logic_error("work_time must be positive");
+        auto opt_work_time_ms = readOpt<double>(fs["work_time"]);
+        cv::optional<int64_t> opt_work_time_mcs;
+        if (opt_work_time_ms) {
+            const double work_time_ms = opt_work_time_ms.value();
+            if (work_time_ms < 0) {
+                throw std::logic_error("work_time must be positive");
+            }
+            opt_work_time_mcs = cv::optional<int64_t>(utils::ms_to_mcs(work_time_ms));
         }
 
         auto pipelines_fn = check_and_get_fn(fs, "Pipelines", "Config");
@@ -293,6 +389,21 @@ int main(int argc, char* argv[]) {
         for (const auto& name : exec_list) {
             const auto& pl_fn = check_and_get_fn(pipelines_fn, name, "Pipelines");
             builder.setName(name);
+            StopCriterion::Ptr stop_criterion;
+            auto opt_num_iters = readOpt<int>(pl_fn["num_iters"]);
+            // NB: num_iters for specific pipeline takes priority over global work_time.
+            if (opt_num_iters) {
+                stop_criterion.reset(new NumItersCriterion(opt_num_iters.value()));
+            } else if (opt_work_time_mcs) {
+                stop_criterion.reset(new ElapsedTimeCriterion(opt_work_time_mcs.value()));
+            } else {
+                throw std::logic_error(
+                        "Failed: Pipeline " + name + " doesn't have stop criterion!\n"
+                        "Please specify either work_time: <value> in the config root"
+                        " or num_iters: <value> for specific pipeline.");
+            }
+            builder.setStopCriterion(std::move(stop_criterion));
+
             // NB: Set source
             {
                 const auto& src_fn = check_and_get_fn(pl_fn, "source", name);
@@ -306,38 +417,38 @@ int main(int argc, char* argv[]) {
                 if (app_mode == AppMode::BENCHMARK) {
                     latency = 0.0;
                 }
-                builder.setSource(src_name, latency, output);
+
+                const auto wait_mode =
+                    strToWaitMode(readOpt<std::string>(src_fn["wait_mode"]).value_or("busy"));
+                auto wait_strategy = (wait_mode == WaitMode::SLEEP) ? utils::sleep : utils::busyWait;
+                auto src = std::make_shared<DummySource>(
+                        utils::double_ms_t{latency}, output, drop_frames, std::move(wait_strategy));
+                builder.setSource(src_name, src);
             }
 
             const auto& nodes_fn = check_and_get_fn(pl_fn, "nodes", name);
             if (!nodes_fn.isSeq()) {
                 throw std::logic_error("nodes in " + name + " must be a sequence");
             }
+
             for (auto node_fn : nodes_fn) {
-                auto node_name =
-                    check_and_read<std::string>(node_fn, "name", "node");
+                auto call_params = read<CallParams>(node_fn);
                 auto node_type =
                     check_and_read<std::string>(node_fn, "type", "node");
                 if (node_type == "Dummy") {
-                    auto time =
-                        check_and_read<double>(node_fn, "time", node_name);
-                    if (time < 0) {
-                        throw std::logic_error(node_name + " time must be positive");
-                    }
-                    auto output =
-                        check_and_read<OutputDescr>(node_fn, "output", node_name);
-                    builder.addDummy(node_name, time, output);
+                    builder.addDummy(call_params, read<DummyParams>(node_fn));
                 } else if (node_type == "Infer") {
-                    InferParams params;
-                    params.path   = read<ModelPath>(node_fn);
-                    params.device =
-                        check_and_read<std::string>(node_fn, "device", node_name);
-                    params.input_layers =
-                        readList<std::string>(node_fn, "input_layers", node_name);
-                    params.output_layers =
-                        readList<std::string>(node_fn, "output_layers", node_name);
-                    params.config = config;
-                    builder.addInfer(node_name, params);
+                    auto infer_params = read<InferParams>(node_fn);
+                    try {
+                        utils::mergeMapWith(infer_params.config, gconfig);
+                    } catch (std::exception& e) {
+                        std::stringstream ss;
+                        ss << "Failed to merge global and local config for Infer node: "
+                           << call_params.name << std::endl << e.what();
+                        throw std::logic_error(ss.str());
+                    }
+                    infer_params.mode = infer_mode;
+                    builder.addInfer(call_params, infer_params);
                 } else {
                     throw std::logic_error("Unsupported node type: " + node_type);
                 }
@@ -352,9 +463,18 @@ int main(int argc, char* argv[]) {
                 builder.addEdge(edge);
             }
 
+            auto cfg_pl_mode = readOpt<std::string>(pl_fn["mode"]);
             // NB: Pipeline mode from config takes priority over cmd.
-            auto mode = readOpt<std::string>(pl_fn["mode"]);
-            builder.setMode(mode.has_value() ? strToPLMode(mode.value()) : pl_mode);
+            auto pl_mode = cfg_pl_mode.has_value()
+                ? strToPLMode(cfg_pl_mode.value()) : cmd_pl_mode;
+            // NB: Using drop_frames with streaming pipelines will lead to
+            // incorrect performance results.
+            if (drop_frames && pl_mode == PLMode::STREAMING) {
+                throw std::logic_error(
+                        "--drop_frames option is supported only for pipelines in \"regular\" mode");
+            }
+
+            builder.setMode(pl_mode);
 
             // NB: Queue capacity from config takes priority over cmd.
             auto config_qc = readOpt<int>(pl_fn["queue_capacity"]);
@@ -384,7 +504,7 @@ int main(int argc, char* argv[]) {
         for (size_t i = 0; i < pipelines.size(); ++i) {
             threads[i] = std::thread([&, i]() {
                 try {
-                    pipelines[i]->run(work_time_ms);
+                    pipelines[i]->run();
                 } catch (...) {
                     eptrs[i] = std::current_exception();
                 }

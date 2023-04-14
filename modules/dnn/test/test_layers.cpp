@@ -1221,6 +1221,7 @@ TEST_P(Layer_Test_DWconv_Prelu, Accuracy)
     Mat in_blob(4, &shape[0], CV_32FC1, Scalar(1));
 
     net.setPreferableBackend(DNN_BACKEND_OPENCV);
+    net.enableWinograd(false);
     net.setInput(in_blob);
     Mat out = net.forward();
 
@@ -1291,7 +1292,7 @@ TEST_P(Layer_Test_Convolution_DLDT, Accuracy)
     if (backendId == DNN_BACKEND_INFERENCE_ENGINE_NN_BUILDER_2019)
         ASSERT_EQ(net.getLayer(outLayers[0])->type, "Convolution");
     else
-        ASSERT_EQ(net.getLayer(outLayers[0])->type, "Add");
+        ASSERT_EQ(net.getLayer(outLayers[0])->type, "Result");
 }
 
 TEST_P(Layer_Test_Convolution_DLDT, setInput_uint8)

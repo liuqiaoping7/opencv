@@ -26,14 +26,6 @@ def test_error_no_config_exists():
     assert 'Failed to open config file: not_existing_cfg.yml' in out
 
 
-def test_error_no_work_time():
-    cfg_file = """\"%YAML:1.0\" """
-
-    exec_str = '{} --cfg={}'.format(pipeline_modeling_tool, cfg_file)
-    out = get_output(exec_str)
-    assert out.startswith('Config must contain field: work_time')
-
-
 def test_error_work_time_not_positive():
     cfg_file = """\"%YAML:1.0
 work_time: -1\" """
@@ -77,7 +69,8 @@ def test_error_no_source():
     cfg_file = """\"%YAML:1.0
 work_time: 1000
 Pipelines:
-  PL1:\" """
+  PL1:
+    queue_capacity: 1\" """
 
     exec_str = '{} --cfg={}'.format(pipeline_modeling_tool, cfg_file)
     out = get_output(exec_str)
@@ -907,25 +900,104 @@ def test_error_invalid_pl_mode():
   cfg_file = """\"%YAML:1.0
 work_time: 1000
 Pipelines:
-PL1:
-  source:
-    name: 'Src'
-    latency: 20
-    output:
-      dims: [1,2,3,4]
-      precision: 'U8'
-  nodes:
-    - name: 'Node0'
-      type: 'Dummy'
-      time: 0.2
+  PL1:
+    source:
+      name: 'Src'
+      latency: 20
       output:
         dims: [1,2,3,4]
         precision: 'U8'
-  edges:
-    - from: 'Src'
-      to: 'Node0'\" """
+    nodes:
+      - name: 'Node0'
+        type: 'Dummy'
+        time: 0.2
+        output:
+          dims: [1,2,3,4]
+          precision: 'U8'
+    edges:
+      - from: 'Src'
+        to: 'Node0'\" """
 
   exec_str = '{} --cfg={} --app_mode=unknown'.format(pipeline_modeling_tool, cfg_file)
   out = get_output(exec_str)
   assert out.startswith('Unsupported AppMode: unknown\n'
                         'Please chose between: realtime and benchmark')
+
+
+def test_error_drop_frames_with_streaming():
+    cfg_file = """\"%YAML:1.0
+work_time: 1000
+Pipelines:
+  PL1:
+    source:
+      name: 'Src'
+      latency: 20
+      output:
+        dims: [1,2,3,4]
+        precision: 'U8'
+    nodes:
+      - name: 'Node0'
+        type: 'Dummy'
+        time: 0.2
+        output:
+          dims: [1,2,3,4]
+          precision: 'U8'
+    edges:
+      - from: 'Src'
+        to: 'Node0'\" """
+
+    exec_str = '{} --cfg={} --pl_mode=streaming --drop_frames'.format(pipeline_modeling_tool, cfg_file)
+    out = get_output(exec_str)
+    assert out.startswith('--drop_frames option is supported only for pipelines in "regular" mode')
+
+
+def test_incorrect_call_every_nth():
+    cfg_file = """\"%YAML:1.0
+work_time: 1000
+Pipelines:
+  PL1:
+    source:
+      name: 'Src'
+      latency: 20
+      output:
+        dims: [1,2,3,4]
+        precision: 'U8'
+    nodes:
+      - name: 'Node0'
+        type: 'Dummy'
+        call_every_nth: {}\" """
+
+    error = 'Node0 call_every_nth must be greater than zero\nCurrent call_every_nth: {}'
+
+    def check(cfg_file, call_every_nth):
+        out = get_output('{} --cfg={}'.format(pipeline_modeling_tool, cfg_file.format(call_every_nth)))
+        assert out.startswith(error.format(call_every_nth))
+
+    check(cfg_file, -3)
+    check(cfg_file, 0)
+
+
+def test_error_no_worktime_and_num_iters():
+    cfg_file = """\"%YAML:1.0
+Pipelines:
+  PL1:
+    source:
+      name: 'Src'
+      latency: 20
+      output:
+        dims: [1,1]
+        precision: 'U8'
+    nodes:
+      - name: 'Node0'
+        type: 'Dummy'
+        time: 0.2
+        output:
+          dims: [1,2,3,4]
+          precision: 'U8'
+    edges:
+      - from: 'Src'
+        to: 'Node0'\" """
+
+    exec_str = '{} --cfg={}'.format(pipeline_modeling_tool, cfg_file)
+    out = get_output(exec_str)
+    assert out.startswith('Failed: Pipeline PL1 doesn\'t have stop criterion!')

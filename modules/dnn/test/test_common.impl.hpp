@@ -30,6 +30,8 @@ void PrintTo(const cv::dnn::Backend& v, std::ostream* os)
     case DNN_BACKEND_INFERENCE_ENGINE_NN_BUILDER_2019: *os << "DLIE"; return;
     case DNN_BACKEND_INFERENCE_ENGINE_NGRAPH: *os << "NGRAPH"; return;
     case DNN_BACKEND_WEBNN: *os << "WEBNN"; return;
+    case DNN_BACKEND_TIMVX: *os << "TIMVX"; return;
+    case DNN_BACKEND_CANN: *os << "CANN"; return;
     } // don't use "default:" to emit compiler warnings
     *os << "DNN_BACKEND_UNKNOWN(" << (int)v << ")";
 }
@@ -46,6 +48,7 @@ void PrintTo(const cv::dnn::Target& v, std::ostream* os)
     case DNN_TARGET_FPGA: *os << "FPGA"; return;
     case DNN_TARGET_CUDA: *os << "CUDA"; return;
     case DNN_TARGET_CUDA_FP16: *os << "CUDA_FP16"; return;
+    case DNN_TARGET_NPU: *os << "NPU"; return;
     } // don't use "default:" to emit compiler warnings
     *os << "DNN_TARGET_UNKNOWN(" << (int)v << ")";
 }
@@ -249,12 +252,11 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
         bool withVkCom /*= true*/,
         bool withCUDA /*= true*/,
         bool withNgraph /*= true*/,
-        bool withWebnn /*= false*/
+        bool withWebnn /*= false*/,
+        bool withCann /*= true*/
 )
 {
-#ifdef HAVE_INF_ENGINE
     bool withVPU = validateVPUType();
-#endif
 
     std::vector< tuple<Backend, Target> > targets;
     std::vector< Target > available;
@@ -264,7 +266,6 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
         for (std::vector< Target >::const_iterator i = available.begin(); i != available.end(); ++i)
             targets.push_back(make_tuple(DNN_BACKEND_HALIDE, *i));
     }
-#ifdef HAVE_INF_ENGINE
     if (withInferenceEngine)
     {
         available = getAvailableTargets(DNN_BACKEND_INFERENCE_ENGINE_NN_BUILDER_2019);
@@ -286,9 +287,6 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
         }
 
     }
-#else
-    CV_UNUSED(withInferenceEngine);
-#endif
     if (withVkCom)
     {
         available = getAvailableTargets(DNN_BACKEND_VKCOM);
@@ -314,6 +312,16 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
 #else
     CV_UNUSED(withWebnn);
 #endif
+
+#ifdef HAVE_CANN
+    if (withCann)
+    {
+        for (auto target : getAvailableTargets(DNN_BACKEND_CANN))
+            targets.push_back(make_tuple(DNN_BACKEND_CANN, target));
+    }
+#else
+    CV_UNUSED(withCann);
+#endif // HAVE_CANN
 
     {
         available = getAvailableTargets(DNN_BACKEND_OPENCV);
@@ -354,7 +362,6 @@ testing::internal::ParamGenerator< tuple<Backend, Target> > dnnBackendsAndTarget
 #endif
 }
 
-#ifdef HAVE_INF_ENGINE
 static std::string getTestInferenceEngineVPUType()
 {
     static std::string param_vpu_type = utils::getConfigurationParameterString("OPENCV_TEST_DNN_IE_VPU_TYPE", "");
@@ -417,7 +424,6 @@ bool validateVPUType()
     static bool result = validateVPUType_();
     return result;
 }
-#endif // HAVE_INF_ENGINE
 
 
 void initDNNTests()
@@ -477,6 +483,16 @@ void initDNNTests()
 #ifdef HAVE_CUDA
     registerGlobalSkipTag(
         CV_TEST_TAG_DNN_SKIP_CUDA, CV_TEST_TAG_DNN_SKIP_CUDA_FP32, CV_TEST_TAG_DNN_SKIP_CUDA_FP16
+    );
+#endif
+#ifdef HAVE_TIMVX
+    registerGlobalSkipTag(
+        CV_TEST_TAG_DNN_SKIP_TIMVX
+    );
+#endif
+#ifdef HAVE_CANN
+    registerGlobalSkipTag(
+        CV_TEST_TAG_DNN_SKIP_CANN
     );
 #endif
     registerGlobalSkipTag(

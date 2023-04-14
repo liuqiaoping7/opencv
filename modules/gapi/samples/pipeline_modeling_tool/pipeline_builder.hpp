@@ -23,11 +23,16 @@ struct Edge {
     P dst;
 };
 
+struct CallParams {
+    std::string name;
+    size_t      call_every_nth;
+};
+
 struct CallNode {
     using F = std::function<void(const cv::GProtoArgs&, cv::GProtoArgs&)>;
 
-    std::string name;
-    F           run;
+    CallParams params;
+    F          run;
 };
 
 struct DataNode {
@@ -44,6 +49,80 @@ struct Node {
     Kind kind;
 };
 
+struct SubGraphCall {
+    G_API_OP(GSubGraph,
+             <cv::GMat(cv::GMat, cv::GComputation, cv::GCompileArgs, size_t)>,
+             "custom.subgraph") {
+        static cv::GMatDesc outMeta(const cv::GMatDesc& in,
+                                    cv::GComputation    comp,
+                                    cv::GCompileArgs    compile_args,
+                                    const size_t        call_every_nth) {
+            GAPI_Assert(call_every_nth > 0);
+            auto out_metas =
+                comp.compile(in, std::move(compile_args)).outMetas();
+            GAPI_Assert(out_metas.size() == 1u);
+            GAPI_Assert(cv::util::holds_alternative<cv::GMatDesc>(out_metas[0]));
+            return cv::util::get<cv::GMatDesc>(out_metas[0]);
+        }
+
+    };
+
+    struct SubGraphState {
+        cv::Mat       last_result;
+        cv::GCompiled cc;
+        int           call_counter = 0;
+    };
+
+    GAPI_OCV_KERNEL_ST(SubGraphImpl, GSubGraph, SubGraphState) {
+            static void setup(const cv::GMatDesc&             in,
+                              cv::GComputation                comp,
+                              cv::GCompileArgs                compile_args,
+                              const size_t                    /*call_every_nth*/,
+                              std::shared_ptr<SubGraphState>& state,
+                              const cv::GCompileArgs&         /*args*/) {
+                state.reset(new SubGraphState{});
+                state->cc = comp.compile(in, std::move(compile_args));
+                auto out_desc =
+                    cv::util::get<cv::GMatDesc>(state->cc.outMetas()[0]);
+                utils::createNDMat(state->last_result,
+                                   out_desc.dims,
+                                   out_desc.depth);
+            }
+
+            static void run(const cv::Mat&   in,
+                            cv::GComputation /*comp*/,
+                            cv::GCompileArgs /*compile_args*/,
+                            const size_t     call_every_nth,
+                            cv::Mat&         out,
+                            SubGraphState&   state) {
+                // NB: Make a call on the first iteration and skip the furthers.
+                if (state.call_counter == 0) {
+                    state.cc(in, state.last_result);
+                }
+                state.last_result.copyTo(out);
+                state.call_counter = (state.call_counter + 1) % call_every_nth;
+            }
+    };
+
+    void operator()(const cv::GProtoArgs& inputs, cv::GProtoArgs& outputs);
+
+    size_t numInputs()  const { return 1; }
+    size_t numOutputs() const { return 1; }
+
+    cv::GComputation comp;
+    cv::GCompileArgs compile_args;
+    size_t           call_every_nth;
+};
+
+void SubGraphCall::operator()(const cv::GProtoArgs& inputs,
+                                    cv::GProtoArgs& outputs) {
+    GAPI_Assert(inputs.size() == 1u);
+    GAPI_Assert(cv::util::holds_alternative<cv::GMat>(inputs[0]));
+    GAPI_Assert(outputs.empty());
+    auto in = cv::util::get<cv::GMat>(inputs[0]);
+    outputs.emplace_back(GSubGraph::on(in, comp, compile_args, call_every_nth));
+}
+
 struct DummyCall {
     G_API_OP(GDummy,
              <cv::GMat(cv::GMat, double, OutputDescr)>,
@@ -54,7 +133,8 @@ struct DummyCall {
             if (output.dims.size() == 2) {
                 return cv::GMatDesc(output.precision,
                                     1,
-                                    cv::Size(output.dims[0], output.dims[1]));
+                                    // NB: Dims[H, W] -> Size(W, H)
+                                    cv::Size(output.dims[1], output.dims[0]));
             }
             return cv::GMatDesc(output.precision, output.dims);
         }
@@ -83,13 +163,10 @@ struct DummyCall {
                         cv::Mat&           out_mat,
                         DummyState&        state) {
             using namespace std::chrono;
-            double total = 0;
-            auto   start = high_resolution_clock::now();
+            auto start_ts = utils::timestamp<utils::double_ms_t>();
             state.mat.copyTo(out_mat);
-            while (total < time) {
-                total = duration_cast<duration<double, std::milli>>(
-                            high_resolution_clock::now() - start).count();
-            }
+            auto elapsed = utils::timestamp<utils::double_ms_t>() - start_ts;
+            utils::busyWait(duration_cast<microseconds>(utils::double_ms_t{time-elapsed}));
         }
     };
 
@@ -166,6 +243,11 @@ struct ImportPath {
 
 using ModelPath = cv::util::variant<ImportPath, LoadPath>;
 
+struct DummyParams {
+    double      time;
+    OutputDescr output;
+};
+
 struct InferParams {
     std::string name;
     ModelPath   path;
@@ -173,33 +255,94 @@ struct InferParams {
     std::vector<std::string> input_layers;
     std::vector<std::string> output_layers;
     std::map<std::string, std::string> config;
+    cv::gapi::ie::InferMode mode;
+    cv::util::optional<int> out_precision;
 };
+
+class ElapsedTimeCriterion : public StopCriterion {
+public:
+    ElapsedTimeCriterion(int64_t work_time_mcs);
+
+    void start() override;
+    void iter()  override;
+    bool done()  override;
+
+private:
+    int64_t m_work_time_mcs;
+    int64_t m_start_ts = -1;
+    int64_t m_curr_ts  = -1;
+};
+
+ElapsedTimeCriterion::ElapsedTimeCriterion(int64_t work_time_mcs)
+    : m_work_time_mcs(work_time_mcs) {
+};
+
+void ElapsedTimeCriterion::start() {
+    m_start_ts = m_curr_ts = utils::timestamp<std::chrono::microseconds>();
+}
+
+void ElapsedTimeCriterion::iter() {
+    m_curr_ts = utils::timestamp<std::chrono::microseconds>();
+}
+
+bool ElapsedTimeCriterion::done() {
+    return (m_curr_ts - m_start_ts) >= m_work_time_mcs;
+}
+
+class NumItersCriterion : public StopCriterion {
+public:
+    NumItersCriterion(int64_t num_iters);
+
+    void start() override;
+    void iter()  override;
+    bool done()  override;
+
+private:
+    int64_t m_num_iters;
+    int64_t m_curr_iters = 0;
+};
+
+NumItersCriterion::NumItersCriterion(int64_t num_iters)
+    : m_num_iters(num_iters) {
+}
+
+void NumItersCriterion::start() {
+    m_curr_iters = 0;
+}
+
+void NumItersCriterion::iter() {
+    ++m_curr_iters;
+}
+
+bool NumItersCriterion::done() {
+    return m_curr_iters == m_num_iters;
+}
 
 class PipelineBuilder {
 public:
     PipelineBuilder();
-    void addDummy(const std::string& name,
-                  const double       time,
-                  const OutputDescr& output);
+    void addDummy(const CallParams&  call_params,
+                  const DummyParams& dummy_params);
 
-    void addInfer(const std::string& name, const InferParams& params);
+    void addInfer(const CallParams&  call_params,
+                  const InferParams& infer_params);
 
-    void setSource(const std::string& name,
-                   double latency,
-                   const OutputDescr& output);
+    void setSource(const std::string&           name,
+                   std::shared_ptr<DummySource> src);
 
     void addEdge(const Edge& edge);
     void setMode(PLMode mode);
     void setDumpFilePath(const std::string& dump);
     void setQueueCapacity(const size_t qc);
     void setName(const std::string& name);
+    void setStopCriterion(StopCriterion::Ptr stop_criterion);
 
     Pipeline::Ptr build();
 
 private:
     template <typename CallT>
-    void addCall(const std::string& name,
-                 CallT&&            call);
+    void addCall(const CallParams& call_params,
+                 CallT&&           call);
 
     Pipeline::Ptr construct();
 
@@ -211,15 +354,16 @@ private:
             std::vector<Edge> output_edges;
         };
 
-        M<std::string, Node::Ptr>         calls_map;
-        std::vector<Node::Ptr>            all_calls;
+        M<std::string, Node::Ptr>    calls_map;
+        std::vector<Node::Ptr>       all_calls;
 
-        cv::gapi::GNetPackage             networks;
-        cv::gapi::GKernelPackage          kernels;
-        cv::GCompileArgs                  compile_args;
-        cv::gapi::wip::IStreamSource::Ptr src;
-        PLMode                            mode = PLMode::STREAMING;
-        std::string                       name;
+        cv::gapi::GNetPackage        networks;
+        cv::gapi::GKernelPackage     kernels;
+        cv::GCompileArgs             compile_args;
+        std::shared_ptr<DummySource> src;
+        PLMode                       mode = PLMode::STREAMING;
+        std::string                  name;
+        StopCriterion::Ptr           stop_criterion;
     };
 
     std::unique_ptr<State> m_state;
@@ -227,20 +371,21 @@ private:
 
 PipelineBuilder::PipelineBuilder() : m_state(new State{}) { };
 
-void PipelineBuilder::addDummy(const std::string&  name,
-                               const double        time,
-                               const OutputDescr&  output) {
+void PipelineBuilder::addDummy(const CallParams&  call_params,
+                               const DummyParams& dummy_params) {
     m_state->kernels.include<DummyCall::GCPUDummy>();
-    addCall(name, DummyCall{time, output});
+    addCall(call_params,
+            DummyCall{dummy_params.time, dummy_params.output});
 }
 
 template <typename CallT>
-void PipelineBuilder::addCall(const std::string& name,
-                              CallT&&            call) {
+void PipelineBuilder::addCall(const CallParams& call_params,
+                              CallT&&           call) {
 
     size_t num_inputs  = call.numInputs();
     size_t num_outputs = call.numOutputs();
-    Node::Ptr call_node(new Node{{},{},Node::Kind{CallNode{name, std::move(call)}}});
+    Node::Ptr call_node(new Node{{},{},Node::Kind{CallNode{call_params,
+                                                           std::move(call)}}});
     // NB: Create placeholders for inputs.
     call_node->in_nodes.resize(num_inputs);
     // NB: Create outputs with empty data.
@@ -250,36 +395,43 @@ void PipelineBuilder::addCall(const std::string& name,
                                                    Node::Kind{DataNode{}}});
     }
 
-    auto it = m_state->calls_map.find(name);
+    auto it = m_state->calls_map.find(call_params.name);
     if (it != m_state->calls_map.end()) {
-        throw std::logic_error("Node: " + name + " already exists!");
+        throw std::logic_error("Node: " + call_params.name + " already exists!");
     }
-    m_state->calls_map.emplace(name, call_node);
+    m_state->calls_map.emplace(call_params.name, call_node);
     m_state->all_calls.emplace_back(call_node);
 }
 
-void PipelineBuilder::addInfer(const std::string& name,
-                               const InferParams& params) {
+void PipelineBuilder::addInfer(const CallParams&  call_params,
+                               const InferParams& infer_params) {
     // NB: No default ctor for Params.
     std::unique_ptr<cv::gapi::ie::Params<cv::gapi::Generic>> pp;
-    if (cv::util::holds_alternative<LoadPath>(params.path)) {
-       auto load_path = cv::util::get<LoadPath>(params.path);
-       pp.reset(new cv::gapi::ie::Params<cv::gapi::Generic>(name,
+    if (cv::util::holds_alternative<LoadPath>(infer_params.path)) {
+       auto load_path = cv::util::get<LoadPath>(infer_params.path);
+       pp.reset(new cv::gapi::ie::Params<cv::gapi::Generic>(call_params.name,
                                                             load_path.xml,
                                                             load_path.bin,
-                                                            params.device));
+                                                            infer_params.device));
     } else {
-        GAPI_Assert(cv::util::holds_alternative<ImportPath>(params.path));
-        auto import_path = cv::util::get<ImportPath>(params.path);
-        pp.reset(new cv::gapi::ie::Params<cv::gapi::Generic>(name,
+        GAPI_Assert(cv::util::holds_alternative<ImportPath>(infer_params.path));
+        auto import_path = cv::util::get<ImportPath>(infer_params.path);
+        pp.reset(new cv::gapi::ie::Params<cv::gapi::Generic>(call_params.name,
                                                              import_path.blob,
-                                                             params.device));
+                                                             infer_params.device));
     }
 
-    pp->pluginConfig(params.config);
+    pp->pluginConfig(infer_params.config);
+    pp->cfgInferMode(infer_params.mode);
+    if (infer_params.out_precision) {
+        pp->cfgOutputPrecision(infer_params.out_precision.value());
+    }
     m_state->networks += cv::gapi::networks(*pp);
 
-    addCall(name, InferCall{name, params.input_layers, params.output_layers});
+    addCall(call_params,
+            InferCall{call_params.name,
+                      infer_params.input_layers,
+                      infer_params.output_layers});
 }
 
 void PipelineBuilder::addEdge(const Edge& edge) {
@@ -315,12 +467,11 @@ void PipelineBuilder::addEdge(const Edge& edge) {
     out_data->out_nodes.push_back(dst_node);
 }
 
-void PipelineBuilder::setSource(const std::string& name,
-                                double latency,
-                                const OutputDescr& output) {
-    GAPI_Assert(!m_state->src);
-    m_state->src = std::make_shared<DummySource>(latency, output);
-    addCall(name, SourceCall{});
+void PipelineBuilder::setSource(const std::string&           name,
+                                std::shared_ptr<DummySource> src) {
+    GAPI_Assert(!m_state->src && "Only single source pipelines are supported!");
+    m_state->src = src;
+    addCall(CallParams{name, 1u/*call_every_nth*/}, SourceCall{});
 }
 
 void PipelineBuilder::setMode(PLMode mode) {
@@ -337,6 +488,10 @@ void PipelineBuilder::setQueueCapacity(const size_t qc) {
 
 void PipelineBuilder::setName(const std::string& name) {
     m_state->name = name;
+}
+
+void PipelineBuilder::setStopCriterion(StopCriterion::Ptr stop_criterion) {
+    m_state->stop_criterion = std::move(stop_criterion);
 }
 
 static bool visit(Node::Ptr node,
@@ -407,7 +562,7 @@ Pipeline::Ptr PipelineBuilder::construct() {
             if (in_data_node.expired()) {
                 const auto& call = cv::util::get<CallNode>(call_node->kind);
                 throw std::logic_error(
-                        "Node: " + call.name + " in Pipeline: " + m_state->name +
+                        "Node: " + call.params.name + " in Pipeline: " + m_state->name +
                         " has dangling input by in port: " + std::to_string(i));
             }
         }
@@ -426,8 +581,14 @@ Pipeline::Ptr PipelineBuilder::construct() {
             sorted_calls.push_back(n);
         }
     }
+
+    m_state->kernels.include<SubGraphCall::SubGraphImpl>();
+    m_state->compile_args.emplace_back(m_state->networks);
+    m_state->compile_args.emplace_back(m_state->kernels);
+
     // (2). Go through every call node.
     for (auto call_node : sorted_calls) {
+        auto& call = cv::util::get<CallNode>(call_node->kind);
         cv::GProtoArgs outputs;
         cv::GProtoArgs inputs;
         for (size_t i = 0; i < call_node->in_nodes.size(); ++i) {
@@ -439,8 +600,37 @@ Pipeline::Ptr PipelineBuilder::construct() {
             // (3). Extract proto input from every input node.
             inputs.push_back(in_data.arg.value());
         }
+        // NB: If node shouldn't be called on each iterations,
+        // it should be wrapped into subgraph which is able to skip calling.
+        if (call.params.call_every_nth != 1u) {
+            // FIXME: Limitation of the subgraph operation (<GMat(GMat)>).
+            // G-API doesn't support dynamic number of inputs/outputs.
+            if (inputs.size() > 1u) {
+                throw std::logic_error(
+                        "skip_frame_nth is supported only for single input subgraphs\n"
+                        "Current subgraph has " + std::to_string(inputs.size()) + " inputs");
+            }
+
+            if (outputs.size() > 1u) {
+                throw std::logic_error(
+                        "skip_frame_nth is supported only for single output subgraphs\n"
+                        "Current subgraph has " + std::to_string(inputs.size()) + " outputs");
+            }
+            // FIXME: Should be generalized.
+            // Now every subgraph contains only single node
+            // which has single input/output.
+            GAPI_Assert(cv::util::holds_alternative<cv::GMat>(inputs[0]));
+            cv::GProtoArgs subgr_inputs{cv::GProtoArg{cv::GMat()}};
+            cv::GProtoArgs subgr_outputs;
+            call.run(subgr_inputs, subgr_outputs);
+            auto comp = cv::GComputation(cv::GProtoInputArgs{subgr_inputs},
+                                         cv::GProtoOutputArgs{subgr_outputs});
+            call = CallNode{CallParams{call.params.name, 1u/*call_every_nth*/},
+                            SubGraphCall{std::move(comp),
+                                         m_state->compile_args,
+                                         call.params.call_every_nth}};
+        }
         // (4). Run call and get outputs.
-        auto call = cv::util::get<CallNode>(call_node->kind);
         call.run(inputs, outputs);
         // (5) If call node doesn't have inputs
         // it means that it's input producer node (Source).
@@ -462,24 +652,23 @@ Pipeline::Ptr PipelineBuilder::construct() {
         }
     }
 
-    m_state->compile_args.emplace_back(m_state->networks);
-    m_state->compile_args.emplace_back(m_state->kernels);
+    GAPI_Assert(m_state->stop_criterion);
+    GAPI_Assert(graph_inputs.size() == 1);
+    GAPI_Assert(cv::util::holds_alternative<cv::GMat>(graph_inputs[0]));
+    // FIXME: Handle GFrame when NV12 comes.
+    const auto& graph_input = cv::util::get<cv::GMat>(graph_inputs[0]);
+    graph_outputs.emplace_back(
+            cv::gapi::streaming::timestamp(graph_input).strip());
+    graph_outputs.emplace_back(
+            cv::gapi::streaming::seq_id(graph_input).strip());
 
     if (m_state->mode == PLMode::STREAMING) {
-        GAPI_Assert(graph_inputs.size() == 1);
-        GAPI_Assert(cv::util::holds_alternative<cv::GMat>(graph_inputs[0]));
-        // FIXME: Handle GFrame when NV12 comes.
-        const auto& graph_input = cv::util::get<cv::GMat>(graph_inputs[0]);
-        // NB: In case streaming mode need to expose timestamp in order to
-        // calculate performance metrics.
-        graph_outputs.emplace_back(
-                cv::gapi::streaming::timestamp(graph_input).strip());
-
         return std::make_shared<StreamingPipeline>(std::move(m_state->name),
                                                    cv::GComputation(
                                                        cv::GProtoInputArgs{graph_inputs},
                                                        cv::GProtoOutputArgs{graph_outputs}),
                                                    std::move(m_state->src),
+                                                   std::move(m_state->stop_criterion),
                                                    std::move(m_state->compile_args),
                                                    graph_outputs.size());
     }
@@ -489,6 +678,7 @@ Pipeline::Ptr PipelineBuilder::construct() {
                                                  cv::GProtoInputArgs{graph_inputs},
                                                  cv::GProtoOutputArgs{graph_outputs}),
                                              std::move(m_state->src),
+                                             std::move(m_state->stop_criterion),
                                              std::move(m_state->compile_args),
                                              graph_outputs.size());
 }
