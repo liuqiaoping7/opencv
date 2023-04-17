@@ -40,6 +40,6 @@ if defined VS2019_HOME (
     @REM “MD_DynamicRelease” “MT_StaticRelease” BUILD_WITH_STATIC_CRT
     @REM protobuf link error BUILD_PROTOBUF
     cmake -G "Visual Studio 16 2019" -T "v140" -A %AARCH% -B%BUILD_DIR% -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% -DBUILD_SHARED_LIBS=OFF -DBUILD_WITH_STATIC_CRT=ON -DBUILD_PROTOBUF=OFF -DWITH_WEBP=OFF -DWITH_IPP=OFF -DBUILD_ITT=OFF -DBUILD_OPENJPEG=OFF -DWITH_OPENEXR=OFF -H%TOP_DIR%
-    cmake --build %BUILD_DIR% --config %BUILD_TYPE% --target install
+    cmake --build %BUILD_DIR% --config %BUILD_TYPE% --target install -j8
 )
 goto :eof

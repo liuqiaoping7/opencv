@@ -87,6 +87,7 @@
 #if (WINVER >= 0x0602) // Available since Win 8
 #pragma comment(lib, "MinCore_Downlevel")
 #endif
+// #pragma comment(lib, "Shlwapi.lib")
 #endif
 
 #include <mferror.h>
