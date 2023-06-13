@@ -3,18 +3,29 @@
 #include "opencv2/highgui.hpp"
 #include "opencv2/videoio.hpp"
 #include <iostream>
+#include <io.h>
 
 using namespace cv;
 using namespace std;
 
 void drawText(Mat & image);
 
-int main()
+int main(int argc, char *argv[])
 {
+    if (argc <= 1) {
+        cout << "input videofile path or camid " << endl;
+        return -1;
+    }
     cout << "Built with OpenCV " << CV_VERSION << endl;
     Mat image;
     VideoCapture capture;
-    capture.open(0);
+    if (!access(argv[1], 0)) {
+        capture.open(argv[1]);
+        cout << "open video :" << argv[1] << endl;
+    } else {
+        capture.open(atoi(argv[1]));
+        cout << "open camera :" << argv[1] << endl;
+    }
     if(capture.isOpened())
     {
         cout << "Capture is opened" << endl;
