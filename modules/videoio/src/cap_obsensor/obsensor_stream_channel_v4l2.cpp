@@ -176,7 +176,7 @@ Ptr<IStreamChannel> V4L2Context::createStreamChannel(const UvcDeviceInfo& devInf
 
 V4L2StreamChannel::V4L2StreamChannel(const UvcDeviceInfo &devInfo) : IUvcStreamChannel(devInfo),
                                                                      devFd_(-1),
-                                                                     streamState_(STREAM_STOPED)
+                                                                     streamState_(STREAM_STOPPED)
 {
 
     devFd_ = open(devInfo_.id.c_str(), O_RDWR | O_NONBLOCK, 0);
@@ -203,7 +203,7 @@ V4L2StreamChannel::~V4L2StreamChannel() noexcept
 
 void V4L2StreamChannel::start(const StreamProfile& profile, FrameCallback frameCallback)
 {
-    if (streamState_ != STREAM_STOPED)
+    if (streamState_ != STREAM_STOPPED)
     {
         CV_LOG_ERROR(NULL, devInfo_.id << ": repetitive operation!")
             return;
@@ -248,7 +248,7 @@ void V4L2StreamChannel::start(const StreamProfile& profile, FrameCallback frameC
     streamState_ = STREAM_STARTING;
     uint32_t type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     IOCTL_FAILED_EXEC(xioctl(devFd_, VIDIOC_STREAMON, &type), {
-        streamState_ = STREAM_STOPED;
+        streamState_ = STREAM_STOPPED;
         for (uint32_t i = 0; i < MAX_FRAME_BUFFER_NUM; i++)
         {
             if (frameBuffList[i].ptr)
@@ -279,7 +279,7 @@ void V4L2StreamChannel::grabFrame()
 
     IOCTL_FAILED_EXEC(xioctl(devFd_, VIDIOC_QBUF, &buf), {
         std::unique_lock<std::mutex> lk(streamStateMutex_);
-        streamState_ = STREAM_STOPED;
+        streamState_ = STREAM_STOPPED;
         streamStateCv_.notify_all();
         return;
     });
@@ -303,7 +303,7 @@ void V4L2StreamChannel::grabFrame()
         IOCTL_FAILED_CONTINUE(xioctl(devFd_, VIDIOC_QBUF, &buf));
     }
     std::unique_lock<std::mutex> lk(streamStateMutex_);
-    streamState_ = STREAM_STOPED;
+    streamState_ = STREAM_STOPPED;
     streamStateCv_.notify_all();
 }
 
@@ -314,7 +314,7 @@ bool V4L2StreamChannel::setXu(uint8_t ctrl, const uint8_t* data, uint32_t len)
     }
     memcpy(xuSendBuf_.data(), data, len);
     struct uvc_xu_control_query xu_ctrl_query = {
-        .unit = XU_UNIT_ID,
+        .unit = xuUnit_.unit,
         .selector = ctrl,
         .query = UVC_SET_CUR,
         .size = (__u16)(ctrl == 1 ? 512 : (ctrl == 2 ? 64 : 1024)),
@@ -333,7 +333,7 @@ bool V4L2StreamChannel::getXu(uint8_t ctrl, uint8_t** data, uint32_t* len)
         xuRecvBuf_.resize(XU_MAX_DATA_LENGTH);
     }
     struct uvc_xu_control_query xu_ctrl_query = {
-        .unit = XU_UNIT_ID,
+        .unit = xuUnit_.unit,
         .selector = ctrl,
         .query = UVC_GET_CUR,
         .size = (__u16)(ctrl == 1 ? 512 : (ctrl == 2 ? 64 : 1024)),
@@ -357,7 +357,7 @@ void V4L2StreamChannel::stop()
         streamState_ = STREAM_STOPPING;
         std::unique_lock<std::mutex> lk(streamStateMutex_);
         streamStateCv_.wait_for(lk, std::chrono::milliseconds(1000), [&](){
-            return streamState_ == STREAM_STOPED;
+            return streamState_ == STREAM_STOPPED;
         });
         uint32_t type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         IOCTL_FAILED_LOG(xioctl(devFd_, VIDIOC_STREAMOFF, &type));

@@ -61,14 +61,14 @@ CannConstOp::CannConstOp(const uint8_t* data, const int dtype, const std::vector
     {
         case CV_32F: break;
         case CV_32S: ge_dtype = ge::DT_INT32; break;
-        default: CV_Error(Error::StsNotImplemented, "Unsupported data type");
+        default: CV_Error(Error::StsNotImplemented, cv::format("Unsupported data type %d of node %s", dtype, name.c_str()));
     }
     auto size_of_type = sizeof(float);
     switch (dtype)
     {
         case CV_32F: break;
         case CV_32S: size_of_type = sizeof(int); break;
-        default: CV_Error(Error::StsNotImplemented, "Unsupported data type");
+        default: CV_Error(Error::StsNotImplemented, cv::format("Unsupported data type %d of node %s", dtype, name.c_str()));
     }
     desc_ = std::make_shared<ge::TensorDesc>(ge_shape, ge::FORMAT_NCHW, ge_dtype);
     auto ge_tensor = std::make_shared<ge::Tensor>();
@@ -215,7 +215,7 @@ void CannNet::forward()
     ACL_CHECK_RET(aclmdlExecute(model_id, inputs, outputs));
     CV_LOG_DEBUG(NULL, "DNN/CANN: finished network forward");
 
-    // fetch ouputs from device to host
+    // fetch outputs from device to host
     CV_LOG_DEBUG(NULL, "DNN/CANN: start fetching outputs to host");
     for (size_t i = 0; i < output_wrappers.size(); ++i)
     {

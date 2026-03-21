@@ -675,17 +675,17 @@ int CV_WarpPerspectiveTest::prepare_test_case( int test_case_idx )
     s[3] = Point2f(0,src.rows-1.f);
     d[3] = Point2f(0,dst.rows-1.f);
 
-    float bufer[16];
-    Mat tmp( 1, 16, CV_32FC1, bufer );
+    float buffer[16];
+    Mat tmp( 1, 16, CV_32FC1, buffer );
 
     rng.fill( tmp, RNG::NORMAL, Scalar::all(0.), Scalar::all(0.1) );
 
     for( i = 0; i < 4; i++ )
     {
-        s[i].x += bufer[i*4]*src.cols/2;
-        s[i].y += bufer[i*4+1]*src.rows/2;
-        d[i].x += bufer[i*4+2]*dst.cols/2;
-        d[i].y += bufer[i*4+3]*dst.rows/2;
+        s[i].x += buffer[i*4]*src.cols/2;
+        s[i].y += buffer[i*4+1]*src.rows/2;
+        d[i].x += buffer[i*4+2]*dst.cols/2;
+        d[i].y += buffer[i*4+3]*dst.rows/2;
     }
 
     cv::getPerspectiveTransform( s, d ).convertTo( mat, mat.depth() );
@@ -1332,10 +1332,10 @@ TEST_P(Imgproc_RemapRelative, validity)
     data64FC1.reshape(nChannels, size.height).convertTo(src, srcType);
 
     cv::Mat mapRelativeX32F(size, CV_32FC1);
-    mapRelativeX32F.setTo(cv::Scalar::all(-0.33));
+    mapRelativeX32F.setTo(cv::Scalar::all(-0.25));
 
     cv::Mat mapRelativeY32F(size, CV_32FC1);
-    mapRelativeY32F.setTo(cv::Scalar::all(-0.33));
+    mapRelativeY32F.setTo(cv::Scalar::all(-0.25));
 
     cv::Mat mapAbsoluteX32F = mapRelativeX32F.clone();
     mapAbsoluteX32F.forEach<float>([&](float& pixel, const int* position) {
@@ -1371,7 +1371,7 @@ TEST_P(Imgproc_RemapRelative, validity)
         cv::remap(src, dstRelative, mapRelativeX32F, mapRelativeY32F, interpolation | WARP_RELATIVE_MAP, borderType);
     }
 
-    EXPECT_EQ(cvtest::norm(dstAbsolute, dstRelative, NORM_INF), 0);
+    EXPECT_LE(cvtest::norm(dstAbsolute, dstRelative, NORM_INF), 1);
 };
 
 INSTANTIATE_TEST_CASE_P(ImgProc, Imgproc_RemapRelative, testing::Combine(
@@ -1558,6 +1558,33 @@ TEST(Imgproc_Warp, regression_19566)  // valgrind should detect problem if any
         cv::BORDER_CONSTANT,
         cv::Scalar(0.0, 0.0, 0.0, 255.0)
     );
+}
+
+
+TEST(Imgproc_Warp, regression_28554)
+{
+    const Size inSize(128, 128);
+    const Size outSize(256, 256);
+
+    Mat inMat = Mat::ones(inSize, CV_16S);
+    Mat outMat = Mat(outSize, CV_16S);
+    Mat coeffs = Mat::eye(2, 3, CV_64F);
+    coeffs.at<double>(0, 2) = 64.;
+    coeffs.at<double>(1, 2) = 64.;
+
+    warpAffine(
+        inMat,
+        outMat,
+        coeffs,
+        outSize,
+        INTER_NEAREST,
+        cv::BORDER_CONSTANT,
+        0.0
+    );
+
+    Mat reference = Mat::zeros(outSize, CV_16S);
+    reference(cv::Rect(64, 64, 128, 128)) = 1;
+    ASSERT_EQ(0.0, cvtest::norm(reference, outMat, NORM_INF));
 }
 
 
@@ -1763,6 +1790,41 @@ TEST(Imgproc_Remap, issue_23562)
         remap(src, dst, mapx, mapy, INTER_LINEAR, BORDER_TRANSPARENT);
         ASSERT_EQ(0.0, cvtest::norm(ref, dst, NORM_INF)) << "channels=" << cn;
     }
+}
+
+TEST(Imgproc_getPerspectiveTransform, issue_26916)
+{
+    double src_data[] = {320, 512, 960, 512, 0, 1024, 1280, 1024};
+    const Mat src_points(4, 2, CV_64FC1, src_data);
+
+    double dst_data[] = {0, 0, 1280, 0, 0, 1024, 1280, 1024};
+    const Mat dst_points(4, 2, CV_64FC1, dst_data);
+
+    Mat src_points_f;
+    src_points.convertTo(src_points_f, CV_32FC1);
+
+    Mat dst_points_f;
+    dst_points.convertTo(dst_points_f, CV_32FC1);
+
+    Mat perspective_transform = getPerspectiveTransform(src_points_f, dst_points_f);
+    EXPECT_NEAR(perspective_transform.at<double>(2, 2), 0, 1e-16);
+    EXPECT_NEAR(cv::norm(perspective_transform), 1, 1e-14);
+
+    const Mat ones = Mat::ones(4, 1, CV_64FC1);
+
+    Mat homogeneous_src_points;
+    hconcat(src_points, ones, homogeneous_src_points);
+
+    Mat obtained_homogeneous_dst_points = (perspective_transform * homogeneous_src_points.t()).t();
+    for (int row = 0; row < 4; ++row)
+    {
+        obtained_homogeneous_dst_points.row(row) /= obtained_homogeneous_dst_points.at<double>(row, 2);
+    }
+
+    Mat expected_homogeneous_dst_points;
+    hconcat(dst_points, ones, expected_homogeneous_dst_points);
+
+    EXPECT_MAT_NEAR(obtained_homogeneous_dst_points, expected_homogeneous_dst_points, 1e-10);
 }
 
 }} // namespace

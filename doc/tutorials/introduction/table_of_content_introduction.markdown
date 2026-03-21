@@ -1,12 +1,15 @@
 Introduction to OpenCV {#tutorial_table_of_content_introduction}
 ======================
 
+@tableofcontents
+
 - @subpage tutorial_general_install
 - @subpage tutorial_config_reference
 - @subpage tutorial_env_reference
 
 ##### Linux
 -   @subpage tutorial_linux_install
+-   @subpage tutorial_oneapi_install
 -   @subpage tutorial_linux_gdb_pretty_printer
 -   @subpage tutorial_linux_gcc_cmake
 -   @subpage tutorial_linux_eclipse
@@ -15,6 +18,7 @@ Introduction to OpenCV {#tutorial_table_of_content_introduction}
 -   @subpage tutorial_windows_install
 -   @subpage tutorial_windows_visual_studio_opencv
 -   @subpage tutorial_windows_visual_studio_image_watch
+-   @subpage tutorial_windows_msys2_vscode
 
 ##### Java & Android
 -   @subpage tutorial_java_dev_intro
@@ -30,6 +34,7 @@ Introduction to OpenCV {#tutorial_table_of_content_introduction}
 -   @subpage tutorial_arm_crosscompile_with_cmake
 -   @subpage tutorial_crosscompile_with_multiarch
 -   @subpage tutorial_building_tegra_cuda
+-   @subpage tutorial_building_fastcv
 -   @ref tutorial_ios_install
 
 ##### Usage basics

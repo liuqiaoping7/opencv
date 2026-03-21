@@ -283,6 +283,32 @@ inline int hal_ni_lut(const uchar *src_data, size_t src_step, size_t src_type, c
 //! @endcond
 
 /**
+Lookup table replacement
+Table consists of 65536 elements of a size from 1 to 8 bytes having 1 channel or src_channels
+For 16s input typea 32768 is added to LUT index
+Destination should have the same element type and number of channels as lookup table elements
+@param src_data Source image data
+@param src_step Source image step
+@param src_type Source image type
+@param lut_data Pointer to lookup table
+@param lut_channel_size Size of each channel in bytes
+@param lut_channels Number of channels in lookup table
+@param dst_data Destination data
+@param dst_step Destination step
+@param width Width of images
+@param height Height of images
+@sa LUT
+*/
+//! @addtogroup core_hal_interface_lut16 Lookup table for 16 bit index
+//! @{
+inline int hal_ni_lut16(const ushort *src_data, size_t src_step, size_t src_type, const uchar* lut_data, size_t lut_channel_size, size_t lut_channels, uchar *dst_data, size_t dst_step, int width, int height) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+//! @}
+
+//! @cond IGNORED
+#define cv_hal_lut16 hal_ni_lut16
+//! @endcond
+
+/**
 Hamming norm of a vector
 @param a pointer to vector data
 @param n length of a vector
@@ -756,10 +782,28 @@ inline int hal_ni_dft1D(cvhalDFT *context, const uchar *src, uchar *dst) { retur
  */
 inline int hal_ni_dftFree1D(cvhalDFT *context) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
+/**
+@param src source data
+@param dst destination data
+@param depth depth of source
+@param nf OcvDftOptions data
+@param factors OcvDftOptions data
+@param scale OcvDftOptions data
+@param itab OcvDftOptions data
+@param wave OcvDftOptions data
+@param tab_size OcvDftOptions data
+@param n OcvDftOptions data
+@param isInverse OcvDftOptions data
+@param noPermute OcvDftOptions data
+ */
+inline int hal_ni_dft(const uchar* src, uchar* dst, int depth, int nf, int *factors, double scale, int* itab, void* wave,
+                         int tab_size, int n, bool isInverse, bool noPermute) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+
 //! @cond IGNORED
 #define cv_hal_dftInit1D hal_ni_dftInit1D
 #define cv_hal_dft1D hal_ni_dft1D
 #define cv_hal_dftFree1D hal_ni_dftFree1D
+#define cv_hal_dft hal_ni_dft
 //! @endcond
 
 /**
@@ -1089,8 +1133,76 @@ inline int hal_ni_transpose2d(const uchar* src_data, size_t src_step, uchar* dst
 #define cv_hal_transpose2d hal_ni_transpose2d
 //! @endcond
 
-//! @}
+/**
+    @brief copyTo with mask
+    @param src_data, src_step Source image
+    @param dst_data, dst_step Destination image
+    @param width, height Image dimensions of source, destination and mask
+    @param type Type of source and destination images, for example CV_8UC1 or CV_32FC3
+    @param mask_data, mask_step, mask_type Mask
+*/
+inline int hal_ni_copyToMasked(const uchar* src_data, size_t src_step, uchar* dst_data, size_t dst_step, int width, int height,
+                             int type, const uchar* mask_data, size_t mask_step, int mask_type)
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
+//! @cond IGNORED
+#define cv_hal_copyToMasked hal_ni_copyToMasked
+//! @endcond
+
+/**
+ @ brief sum
+ @param src_data Source image data
+ @param src_step Source image step
+ @param src_type Source image type
+ @param width, height Source image dimensions
+ @param result Pointer to save the sum result to.
+ */
+inline int hal_ni_sum(const uchar *src_data, size_t src_step, int src_type, int width, int height, double *result)
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+
+//! @cond IGNORED
+#define cv_hal_sum hal_ni_sum
+//! @endcond
+
+/**
+   @brief inRange (lower_bound <= src_value) && (src_value <= upper_bound) ? 255 : 0
+   @param src_data Source image data
+   @param src_step Source image step
+   @param dst_data Destination image data
+   @param dst_step Destination image step
+   @param dst_depth Destination image depth
+   @param width Image width
+   @param height Image height
+   @param cn number of channels
+   @param lower_bound Range lower bound
+   @param upper_bound Range upper bound
+*/
+inline int hal_ni_inRange8u(const uchar *src_data, size_t src_step,
+              uchar *dst_data, size_t dst_step, int dst_depth, int width,
+              int height, int cn, uchar lower_bound, uchar upper_bound) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+/**
+   @brief inRange (lower_bound <= src_value) && (src_value <= upper_bound) ? 255 : 0
+   @param src_data Source image data
+   @param src_step Source image step
+   @param dst_data Destination image data
+   @param dst_step Destination image step
+   @param dst_depth Destination image depth
+   @param width Image width
+   @param height Image height
+   @param cn number of channels
+   @param lower_bound Range lower bound
+   @param upper_bound Range upper bound
+*/
+inline int hal_ni_inRange32f(const uchar *src_data, size_t src_step,
+              uchar *dst_data, size_t dst_step, int dst_depth, int width,
+              int height, int cn, double lower_bound, double upper_bound) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+
+//! @cond IGNORED
+#define cv_hal_inRange8u hal_ni_inRange8u
+#define cv_hal_inRange32f hal_ni_inRange32f
+//! @endcond
+
+//! @}
 
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -1104,26 +1216,23 @@ inline int hal_ni_transpose2d(const uchar* src_data, size_t src_step, uchar* dst
 #include "custom_hal.hpp"
 
 //! @cond IGNORED
-#define CALL_HAL_RET(name, fun, retval, ...) \
+
+#define CALL_HAL_RET2(name, fun, retval, ...) \
 { \
-    int res = __CV_EXPAND(fun(__VA_ARGS__, &retval)); \
+    int res = __CV_EXPAND(fun(__VA_ARGS__)); \
     if (res == CV_HAL_ERROR_OK) \
         return retval; \
     else if (res != CV_HAL_ERROR_NOT_IMPLEMENTED) \
         CV_Error_(cv::Error::StsInternal, \
-            ("HAL implementation " CVAUX_STR(name) " ==> " CVAUX_STR(fun) " returned %d (0x%08x)", res, res)); \
+        ("HAL implementation " CVAUX_STR(name) " ==> " CVAUX_STR(fun) " returned %d (0x%08x)", res, res)); \
 }
 
+#define CALL_HAL_RET(name, fun, retval, ...) \
+CALL_HAL_RET2(name, fun, retval, __VA_ARGS__, &retval)
 
 #define CALL_HAL(name, fun, ...) \
-{ \
-    int res = __CV_EXPAND(fun(__VA_ARGS__)); \
-    if (res == CV_HAL_ERROR_OK) \
-        return; \
-    else if (res != CV_HAL_ERROR_NOT_IMPLEMENTED) \
-        CV_Error_(cv::Error::StsInternal, \
-            ("HAL implementation " CVAUX_STR(name) " ==> " CVAUX_STR(fun) " returned %d (0x%08x)", res, res)); \
-}
+CALL_HAL_RET2(name, fun, ,__VA_ARGS__)
+
 //! @endcond
 
 #endif

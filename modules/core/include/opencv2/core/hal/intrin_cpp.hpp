@@ -81,9 +81,26 @@ CV_CPU_OPTIMIZATION_HAL_NAMESPACE_BEGIN
 
 "Universal intrinsics" is a types and functions set intended to simplify vectorization of code on
 different platforms. Currently a few different SIMD extensions on different architectures are supported.
-128 bit registers of various types support is implemented for a wide range of architectures
-including x86(__SSE/SSE2/SSE4.2__), ARM(__NEON__), PowerPC(__VSX__), MIPS(__MSA__).
-256 bit long registers are supported on x86(__AVX2__) and 512 bit long registers are supported on x86(__AVX512__).
+
+OpenCV Universal Intrinsics support the following instruction sets:
+
+- *128 bit* registers of various types support is implemented for a wide range of architectures including
+  - x86(SSE/SSE2/SSE4.2),
+  - ARM(NEON): 64-bit float (64F) requires AArch64,
+  - PowerPC(VSX),
+  - MIPS(MSA),
+  - LoongArch(LSX),
+  - RISC-V(RVV 0.7.1): Fixed-length implementation,
+  - WASM: 64-bit float (64F) is not supported,
+- *256 bit* registers are supported on
+  - x86(AVX2),
+  - LoongArch (LASX),
+- *512 bit* registers are supported on
+  - x86(AVX512),
+- *Vector Length Agnostic (VLA)* registers are supported on
+  - RISC-V(RVV 1.0)
+  - ARM(SVE/SVE2): Powered by Arm KleidiCV integration (OpenCV 4.11+),
+
 In case when there is no SIMD extension available during compilation, fallback C++ implementation of intrinsics
 will be chosen and code will work as expected although it could be slower.
 
@@ -225,32 +242,30 @@ These operations allow to reorder or recombine elements in one or multiple vecto
 Element-wise binary and unary operations.
 
 - Arithmetics:
-@ref v_add(const v_reg &a, const v_reg &b) "+",
-@ref v_sub(const v_reg &a, const v_reg &b) "-",
-@ref v_mul(const v_reg &a, const v_reg &b) "*",
-@ref v_div(const v_reg &a, const v_reg &b) "/",
+@ref v_add,
+@ref v_sub,
+@ref v_mul,
+@ref v_div,
 @ref v_mul_expand
 
 - Non-saturating arithmetics: @ref v_add_wrap, @ref v_sub_wrap
 
 - Bitwise shifts:
-@ref v_shl(const v_reg &a, int s) "<<",
-@ref v_shr(const v_reg &a, int s) ">>",
 @ref v_shl, @ref v_shr
 
 - Bitwise logic:
-@ref v_and(const v_reg &a, const v_reg &b) "&",
-@ref v_or(const v_reg &a, const v_reg &b) "|",
-@ref v_xor(const v_reg &a, const v_reg &b) "^",
-@ref v_not(const v_reg &a) "~"
+@ref v_and,
+@ref v_or,
+@ref v_xor,
+@ref v_not
 
 - Comparison:
-@ref v_gt(const v_reg &a, const v_reg &b) ">",
-@ref v_ge(const v_reg &a, const v_reg &b) ">=",
-@ref v_lt(const v_reg &a, const v_reg &b) "<",
-@ref v_le(const v_reg &a, const v_reg &b) "<=",
-@ref v_eq(const v_reg &a, const v_reg &b) "==",
-@ref v_ne(const v_reg &a, const v_reg &b) "!="
+@ref v_gt,
+@ref v_ge,
+@ref v_lt,
+@ref v_le,
+@ref v_eq,
+@ref v_ne
 
 - min/max: @ref v_min, @ref v_max
 

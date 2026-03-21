@@ -68,6 +68,36 @@ TEST(Imgcodecs_EXR, readWrite_32FC3)
     EXPECT_EQ(0, remove(filenameOutput.c_str()));
 }
 
+TEST(Imgcodecs_EXR, readWrite_32FC7)
+{ // 0-6 channels (multispectral)
+    const string root = cvtest::TS::ptr()->get_data_path();
+    const string filenameInput = root + "readwrite/test32FC7.exr";
+    const string filenameOutput = cv::tempfile(".exr");
+#ifndef GENERATE_DATA
+    const Mat img = cv::imread(filenameInput, IMREAD_UNCHANGED);
+#else
+    const Size sz(3, 5);
+    Mat img(sz, CV_32FC7);
+    img.at<cv::Vec<float, 7>>(0, 0)[0] = 101.125;
+    img.at<cv::Vec<float, 7>>(2, 1)[3] = 203.500;
+    img.at<cv::Vec<float, 7>>(4, 2)[6] = 305.875;
+    ASSERT_TRUE(cv::imwrite(filenameInput, img));
+#endif
+    ASSERT_FALSE(img.empty());
+    ASSERT_EQ(CV_MAKETYPE(CV_32F, 7), img.type());
+
+    ASSERT_TRUE(cv::imwrite(filenameOutput, img));
+    const Mat img2 = cv::imread(filenameOutput, IMREAD_UNCHANGED);
+    EXPECT_EQ(img2.type(), img.type());
+    EXPECT_EQ(img2.size(), img.size());
+    EXPECT_LE(cvtest::norm(img, img2, NORM_INF | NORM_RELATIVE), 1e-3);
+    EXPECT_EQ(0, remove(filenameOutput.c_str()));
+    const Mat img3 = cv::imread(filenameInput, IMREAD_GRAYSCALE);
+    ASSERT_TRUE(img3.empty());
+    const Mat img4 = cv::imread(filenameInput, IMREAD_COLOR);
+    ASSERT_TRUE(img4.empty());
+}
+
 
 TEST(Imgcodecs_EXR, readWrite_32FC1_half)
 {
@@ -154,7 +184,7 @@ TEST(Imgcodecs_EXR, readWrite_32FC1_PIZ)
 // Note: YC to GRAYSCALE (IMREAD_GRAYSCALE | IMREAD_ANYDEPTH)
 // outputs a black image,
 // as does Y to RGB (IMREAD_COLOR | IMREAD_ANYDEPTH).
-// This behavoir predates adding EXR alpha support issue
+// This behavior predates adding EXR alpha support issue
 // 16115.
 
 TEST(Imgcodecs_EXR, read_YA_ignore_alpha)
@@ -180,7 +210,7 @@ TEST(Imgcodecs_EXR, read_YA_unchanged)
     ASSERT_FALSE(img.empty());
     ASSERT_EQ(CV_32FC2, img.type());
 
-    // Cannot test writing, 2 channel writing not suppported by loadsave
+    // Cannot test writing, 2 channel writing not supported by loadsave
 }
 
 TEST(Imgcodecs_EXR, read_YC_changeDepth)

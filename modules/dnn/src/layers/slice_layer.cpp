@@ -87,7 +87,7 @@ Range normalizeRange(const Range& input_range, int n)
 }
 
 // TODO: support cv::Range with steps and negative steps to get rid of this transformation
-void tranformForNegSteps(const MatShape& inpShape, std::vector<std::vector<Range> >& sliceRanges, std::vector<std::vector<int> >& sliceSteps)
+void transformForNegSteps(const MatShape& inpShape, std::vector<std::vector<Range> >& sliceRanges, std::vector<std::vector<int> >& sliceSteps)
 {
     // in case of negative steps,
     // x of shape [5, 10], x[5:0:-1, 10:1:-3] <=> np.flip(x[1:5:1, 2:10:3], aixs=(0, 1))
@@ -143,6 +143,144 @@ std::vector<std::vector<cv::Range> > finalizeSliceRange(const MatShape& inpShape
 
     return sliceRanges;
 }
+
+
+template <typename T>
+class ParallelSlice : public cv::ParallelLoopBody
+{
+public:
+    ParallelSlice(const Mat& inp, Mat& out,
+                  const std::vector<Range>& ranges,
+                  const std::vector<int>& steps,
+                  int nstripes)
+        : inp_(inp), out_(out), ranges_(ranges), steps_(steps), nstripes_(nstripes)
+    {
+        dims_ = inp.dims;
+        es_ = inp.elemSize();
+
+        inp_strides_.resize(dims_);
+        out_strides_.resize(dims_);
+        for(int i=0; i<dims_; ++i) {
+            inp_strides_[i] = inp.step.p[i];
+            out_strides_[i] = out.step.p[i];
+        }
+    }
+
+    void operator()(const Range& range) const CV_OVERRIDE
+    {
+        // Parallelize over outer dims, process inner dim as block
+        // Total tasks = product of dimensions except the last one
+        size_t total_outer = 1;
+        for (int i = 0; i < dims_ - 1; ++i)
+        {
+             int n = ranges_[i].end - ranges_[i].start;
+             int s = steps_[i];
+             if (s == 1)
+                 total_outer *= n;
+             else
+                 total_outer *= (n - 1) / s + 1;
+        }
+
+        // Special case for 1D: total_outer is 1, we just run the loop once for the single dim
+        if (dims_ == 1) total_outer = 1;
+
+        size_t stripeSize = (total_outer + nstripes_ - 1) / nstripes_;
+        size_t stripeStart = range.start * stripeSize;
+        size_t stripeEnd = std::min(total_outer, range.end * stripeSize);
+
+        const uchar* src_base = inp_.ptr();
+        uchar* dst_base = out_.ptr();
+
+        int inner_dim = dims_ - 1;
+        int inner_len = ranges_[inner_dim].end - ranges_[inner_dim].start;
+        int inner_step = steps_[inner_dim];
+        int inner_count = (inner_step == 1) ? inner_len : ((inner_len - 1) / inner_step + 1);
+        size_t inner_src_step = inner_step * inp_strides_[inner_dim];
+        size_t inner_dst_step = out_strides_[inner_dim];
+
+        if (dims_ == 1)
+        {
+            // pure 1D handling
+            // For 1D, "outer" loop is just 1 iteration
+            if (stripeStart >= 1) return;
+
+             // Logic for inner loop same as below
+            int begin = ranges_[0].start;
+            size_t src_offset = begin * inp_strides_[0];
+            size_t dst_offset = 0;
+
+            if (inner_step == 1)
+            {
+                std::memcpy(dst_base + dst_offset, src_base + src_offset, inner_count * es_);
+            }
+            else
+            {
+                 const uchar* s = src_base + src_offset;
+                 uchar* d = dst_base + dst_offset;
+                 for (int i = 0; i < inner_count; ++i)
+                 {
+                     std::memcpy(d, s, es_);
+                     s += inner_src_step;
+                     d += inner_dst_step;
+                 }
+            }
+            return;
+        }
+
+        for (size_t i = stripeStart; i < stripeEnd; ++i)
+        {
+            size_t idx = i;
+            size_t src_offset = 0;
+            size_t dst_offset = 0;
+
+            // Reconstruct indices for outer dims
+            for (int d = dims_ - 2; d >= 0; --d)
+            {
+                int range_len = ranges_[d].end - ranges_[d].start;
+                int step = steps_[d];
+                int count = (step == 1) ? range_len : ((range_len - 1) / step + 1);
+
+                int k = idx % count;
+                idx /= count;
+
+                src_offset += (ranges_[d].start + k * step) * inp_strides_[d];
+                dst_offset += k * out_strides_[d];
+            }
+
+            // Process inner dimension
+            int begin = ranges_[inner_dim].start;
+            // Add bias for inner dim start
+            src_offset += begin * inp_strides_[inner_dim];
+
+            if (inner_step == 1)
+            {
+                std::memcpy(dst_base + dst_offset, src_base + src_offset, inner_count * es_);
+            }
+            else
+            {
+                const uchar* s = src_base + src_offset;
+                uchar* d = dst_base + dst_offset;
+                for (int k = 0; k < inner_count; ++k)
+                {
+                   std::memcpy(d, s, es_);
+                   s += inner_src_step;
+                   d += inner_dst_step;
+                }
+            }
+        }
+    }
+
+private:
+    const Mat& inp_;
+    Mat& out_;
+    const std::vector<Range>& ranges_;
+    const std::vector<int>& steps_;
+    int nstripes_;
+    int dims_;
+    size_t es_;
+    std::vector<size_t> inp_strides_;
+    std::vector<size_t> out_strides_;
+};
 
 class SliceLayerImpl : public SliceLayer
 {
@@ -228,7 +366,7 @@ public:
     {
 #ifdef HAVE_INF_ENGINE
         if (backendId == DNN_BACKEND_INFERENCE_ENGINE_NGRAPH)
-            return sliceRanges.size() == 1 && !hasSteps && neg_step_dims.empty();
+            return sliceRanges.size() == 1 && neg_step_dims.empty();
 #endif
 #ifdef HAVE_CUDA
         if (backendId == DNN_BACKEND_CUDA)
@@ -248,7 +386,7 @@ public:
         std::vector<std::vector<int> > sliceSteps_ = sliceSteps;
         std::vector<std::vector<cv::Range> > sliceRanges_ = sliceRanges;
         if (hasSteps && !neg_step_dims.empty())
-            tranformForNegSteps(inpShape, sliceRanges_, sliceSteps_);
+            transformForNegSteps(inpShape, sliceRanges_, sliceSteps_);
 
         int axis_rw = axis;
         std::vector<std::vector<cv::Range> > sliceRanges_rw = finalizeSliceRange(inpShape, axis_rw, sliceRanges_);
@@ -300,7 +438,7 @@ public:
         MatShape inpShape = shape(inputs[0]);
 
         if (hasSteps && !neg_step_dims.empty())
-            tranformForNegSteps(inpShape, sliceRanges, sliceSteps);
+            transformForNegSteps(inpShape, sliceRanges, sliceSteps);
 
         finalSliceRanges = finalizeSliceRange(shape(inputs[0]), axis, sliceRanges);
 
@@ -620,17 +758,17 @@ public:
         else
         {
             int dimsNum = inpMat.dims;
+            int nstripes = getNumThreads();
+            std::vector<int> dummy_steps(dimsNum, 1);
 
             for (size_t i = 0; i < outputs.size(); i++)
             {
-                std::vector<int> inpIdx(dimsNum, 0);
-                std::vector<int> outIdx(dimsNum, 0);
                 if (inpMat.type() == CV_16F)
-                    getSliceRecursive<int16_t>(inpMat, inpIdx, finalSliceRanges[i], sliceSteps[i], 0, dimsNum, outputs[i], outIdx);
+                    parallel_for_(Range(0, nstripes), ParallelSlice<int16_t>(inpMat, outputs[i], finalSliceRanges[i], sliceSteps.empty() ? dummy_steps : sliceSteps[i], nstripes), nstripes);
                 else if (inpMat.type() == CV_8S)
-                    getSliceRecursive<int8_t>(inpMat, inpIdx, finalSliceRanges[i], sliceSteps[i], 0, dimsNum, outputs[i], outIdx);
+                    parallel_for_(Range(0, nstripes), ParallelSlice<int8_t>(inpMat, outputs[i], finalSliceRanges[i], sliceSteps.empty() ? dummy_steps : sliceSteps[i], nstripes), nstripes);
                 else
-                    getSliceRecursive<float>(inpMat, inpIdx, finalSliceRanges[i], sliceSteps[i], 0, dimsNum, outputs[i], outIdx);
+                    parallel_for_(Range(0, nstripes), ParallelSlice<float>(inpMat, outputs[i], finalSliceRanges[i], sliceSteps.empty() ? dummy_steps : sliceSteps[i], nstripes), nstripes);
                 // flip for negative steps
                 flip(outputs[i]);
             }
@@ -651,7 +789,7 @@ public:
             auto op = std::make_shared<ge::op::SplitV>(name);
 
             // set attr
-            int n_split = static_cast<int>(sliceRanges[0].size());
+            int n_split = static_cast<int>(outputs.size());
             op->set_attr_num_split(n_split);
 
             // set inputs
@@ -765,19 +903,23 @@ public:
         auto& ieInpNode = nodes[0].dynamicCast<InfEngineNgraphNode>()->node;
         CV_Assert(finalSliceRanges[0].size() == ieInpNode.get_shape().size());
 
-        std::vector<int64_t> offsets, dims;
+        std::vector<int64_t> offsets, dims, steps;
         for (int i = 0; i < finalSliceRanges[0].size(); ++i)
         {
             offsets.push_back(finalSliceRanges[0][i].start);
             dims.push_back(finalSliceRanges[0][i].end);
         }
+        if (hasSteps)
+            steps = std::vector<int64_t>(sliceSteps[0].begin(), sliceSteps[0].end());
+        else
+            steps = std::vector<int64_t>((int64_t)dims.size(), 1);
 
         auto lower_bounds = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
                                              ov::Shape{offsets.size()}, offsets.data());
         auto upper_bounds = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
                                              ov::Shape{dims.size()}, dims.data());
         auto strides = std::make_shared<ov::op::v0::Constant>(ov::element::i64,
-                                        ov::Shape{dims.size()}, std::vector<int64_t>((int64_t)dims.size(), 1));
+                                        ov::Shape{dims.size()}, steps);
 
         auto slice = std::make_shared<ov::op::v1::StridedSlice>(ieInpNode,
                                       lower_bounds, upper_bounds, strides, std::vector<int64_t>{}, std::vector<int64_t>{});
@@ -809,8 +951,8 @@ public:
     }
 #endif
 
-    virtual bool tryQuantize(const std::vector<std::vector<float> > &scales,
-                             const std::vector<std::vector<int> > &zeropoints, LayerParams& params) CV_OVERRIDE
+    bool tryQuantize(const std::vector<std::vector<float> > &scales,
+                     const std::vector<std::vector<int> > &zeropoints, LayerParams& params) CV_OVERRIDE
     {
         const int numOutputs = scales[1].size();
         for (int i = 0; i < numOutputs; i++)
@@ -822,28 +964,7 @@ public:
     }
 
 private:
-    template <typename T>
-    void getSliceRecursive(const Mat &inpMat, std::vector<int> &inpIdx,
-                           const std::vector<Range> &sliceRanges,
-                           const std::vector<int> &sliceSteps, int dim, int dimsNum,
-                           Mat &outputs, std::vector<int> &outIdx)
-    {
-        int begin = sliceRanges[dim].start;
-        int end = sliceRanges[dim].end;
-        int step = !sliceSteps.empty() ? sliceSteps[dim] : 1;
 
-        // TODO optimization is required (for 2D tail case at least)
-        for (int k = begin, j = 0; k < end; k += step, j++)
-        {
-            inpIdx[dim] = k;
-            outIdx[dim] = j;
-
-            if (dim + 1 < dimsNum)
-                getSliceRecursive<T>(inpMat, inpIdx, sliceRanges, sliceSteps, dim + 1, dimsNum, outputs, outIdx);
-            else
-                outputs.at<T>(outIdx.data()) = inpMat.at<T>(inpIdx.data());
-        }
-    }
 
     void flip(Mat& output) // break if 1d tensor?
     {

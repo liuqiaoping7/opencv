@@ -1,7 +1,7 @@
 // This file is part of OpenCV project.
 // It is subject to the license terms in the LICENSE file found in the top-level directory
 // of this distribution and at http://opencv.org/license.html
-
+// Copyright (C) 2026, Advanced Micro Devices, Inc., all rights reserved.
 #include "precomp.hpp"
 #include "opencl_kernels_core.hpp"
 #include "hal_replacement.hpp"
@@ -173,74 +173,6 @@ static bool ocl_transpose( InputArray _src, OutputArray _dst )
 
 #endif
 
-#ifdef HAVE_IPP
-static bool ipp_transpose( Mat &src, Mat &dst )
-{
-    CV_INSTRUMENT_REGION_IPP();
-
-    int type = src.type();
-    typedef IppStatus (CV_STDCALL * IppiTranspose)(const void * pSrc, int srcStep, void * pDst, int dstStep, IppiSize roiSize);
-    typedef IppStatus (CV_STDCALL * IppiTransposeI)(const void * pSrcDst, int srcDstStep, IppiSize roiSize);
-    IppiTranspose ippiTranspose = 0;
-    IppiTransposeI ippiTranspose_I = 0;
-
-    if (dst.data == src.data && dst.cols == dst.rows)
-    {
-        CV_SUPPRESS_DEPRECATED_START
-        ippiTranspose_I =
-            type == CV_8UC1 ? (IppiTransposeI)ippiTranspose_8u_C1IR :
-            type == CV_8UC3 ? (IppiTransposeI)ippiTranspose_8u_C3IR :
-            type == CV_8UC4 ? (IppiTransposeI)ippiTranspose_8u_C4IR :
-            type == CV_16UC1 ? (IppiTransposeI)ippiTranspose_16u_C1IR :
-            type == CV_16UC3 ? (IppiTransposeI)ippiTranspose_16u_C3IR :
-            type == CV_16UC4 ? (IppiTransposeI)ippiTranspose_16u_C4IR :
-            type == CV_16SC1 ? (IppiTransposeI)ippiTranspose_16s_C1IR :
-            type == CV_16SC3 ? (IppiTransposeI)ippiTranspose_16s_C3IR :
-            type == CV_16SC4 ? (IppiTransposeI)ippiTranspose_16s_C4IR :
-            type == CV_32SC1 ? (IppiTransposeI)ippiTranspose_32s_C1IR :
-            type == CV_32SC3 ? (IppiTransposeI)ippiTranspose_32s_C3IR :
-            type == CV_32SC4 ? (IppiTransposeI)ippiTranspose_32s_C4IR :
-            type == CV_32FC1 ? (IppiTransposeI)ippiTranspose_32f_C1IR :
-            type == CV_32FC3 ? (IppiTransposeI)ippiTranspose_32f_C3IR :
-            type == CV_32FC4 ? (IppiTransposeI)ippiTranspose_32f_C4IR : 0;
-        CV_SUPPRESS_DEPRECATED_END
-    }
-    else
-    {
-        ippiTranspose =
-            type == CV_8UC1 ? (IppiTranspose)ippiTranspose_8u_C1R :
-            type == CV_8UC3 ? (IppiTranspose)ippiTranspose_8u_C3R :
-            type == CV_8UC4 ? (IppiTranspose)ippiTranspose_8u_C4R :
-            type == CV_16UC1 ? (IppiTranspose)ippiTranspose_16u_C1R :
-            type == CV_16UC3 ? (IppiTranspose)ippiTranspose_16u_C3R :
-            type == CV_16UC4 ? (IppiTranspose)ippiTranspose_16u_C4R :
-            type == CV_16SC1 ? (IppiTranspose)ippiTranspose_16s_C1R :
-            type == CV_16SC3 ? (IppiTranspose)ippiTranspose_16s_C3R :
-            type == CV_16SC4 ? (IppiTranspose)ippiTranspose_16s_C4R :
-            type == CV_32SC1 ? (IppiTranspose)ippiTranspose_32s_C1R :
-            type == CV_32SC3 ? (IppiTranspose)ippiTranspose_32s_C3R :
-            type == CV_32SC4 ? (IppiTranspose)ippiTranspose_32s_C4R :
-            type == CV_32FC1 ? (IppiTranspose)ippiTranspose_32f_C1R :
-            type == CV_32FC3 ? (IppiTranspose)ippiTranspose_32f_C3R :
-            type == CV_32FC4 ? (IppiTranspose)ippiTranspose_32f_C4R : 0;
-    }
-
-    IppiSize roiSize = { src.cols, src.rows };
-    if (ippiTranspose != 0)
-    {
-        if (CV_INSTRUMENT_FUN_IPP(ippiTranspose, src.ptr(), (int)src.step, dst.ptr(), (int)dst.step, roiSize) >= 0)
-            return true;
-    }
-    else if (ippiTranspose_I != 0)
-    {
-        if (CV_INSTRUMENT_FUN_IPP(ippiTranspose_I, dst.ptr(), (int)dst.step, roiSize) >= 0)
-            return true;
-    }
-    return false;
-}
-#endif
-
-
 void transpose( InputArray _src, OutputArray _dst )
 {
     CV_INSTRUMENT_REGION();
@@ -270,8 +202,6 @@ void transpose( InputArray _src, OutputArray _dst )
     }
 
     CALL_HAL(transpose2d, cv_hal_transpose2d, src.data, src.step, dst.data, dst.step, src.cols, src.rows, esz);
-
-    CV_IPP_RUN_FAST(ipp_transpose(src, dst))
 
     if( dst.data == src.data )
     {
@@ -355,40 +285,63 @@ void transposeND(InputArray src_, const std::vector<int>& order, OutputArray dst
 }
 
 
-#if CV_SIMD128
-template<typename V> CV_ALWAYS_INLINE void flipHoriz_single( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size, size_t esz )
+// Generic scalar fallback
+CV_ALWAYS_INLINE void flipHoriz_generic( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size, size_t esz )
+{
+    int i, j, limit = (int)(((size.width + 1)/2)*esz);
+    int height = size.height;
+    AutoBuffer<int> _tab(size.width*esz);
+    int* tab = _tab.data();
+
+    for( i = 0; i < size.width; i++ )
+        for( size_t k = 0; k < esz; k++ )
+            tab[i*esz + k] = (int)((size.width - i - 1)*esz + k);
+
+    for( ; height--; src += sstep, dst += dstep )
+    {
+        for( i = 0; i < limit; i++ )
+        {
+            j = tab[i];
+            uchar t0 = src[i], t1 = src[j];
+            dst[i] = t1; dst[j] = t0;
+        }
+    }
+}
+
+#if CV_SIMD || CV_SIMD_SCALABLE
+template<typename V> CV_ALWAYS_INLINE void flipHoriz_single( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size )
 {
     typedef typename VTraits<V>::lane_type T;
-    int end = (int)(size.width*esz);
-    int width = (end + 1)/2;
-    int width_1 = width & -VTraits<v_uint8x16>::vlanes();
-    int i, j;
+    const int vlanes = VTraits<v_uint8>::vlanes();
+    int end = (int)(size.width * sizeof(T));
+    int width = (end + 1) / 2;
+    int width_simd = width & -vlanes;
+    int height = size.height;
 
 #if CV_STRONG_ALIGNMENT
     CV_Assert(isAligned<sizeof(T)>(src, dst));
 #endif
 
-    for( ; size.height--; src += sstep, dst += dstep )
+    for( ; height--; src += sstep, dst += dstep )
     {
-        for( i = 0, j = end; i < width_1; i += VTraits<v_uint8x16>::vlanes(), j -= VTraits<v_uint8x16>::vlanes() )
+        int i = 0, j = end;
+        for( ; i < width_simd; i += vlanes, j -= vlanes )
         {
-            V t0, t1;
-
-            t0 = v_load((T*)((uchar*)src + i));
-            t1 = v_load((T*)((uchar*)src + j - VTraits<v_uint8x16>::vlanes()));
+            V t0 = vx_load((const T*)(src + i));
+            V t1 = vx_load((const T*)(src + j - vlanes));
             t0 = v_reverse(t0);
             t1 = v_reverse(t1);
-            v_store((T*)(dst + j - VTraits<v_uint8x16>::vlanes()), t0);
+            v_store((T*)(dst + j - vlanes), t0);
             v_store((T*)(dst + i), t1);
         }
+
+        // Scalar tail loop
         if (isAligned<sizeof(T)>(src, dst))
         {
             for ( ; i < width; i += sizeof(T), j -= sizeof(T) )
             {
-                T t0, t1;
-
-                t0 = *((T*)((uchar*)src + i));
-                t1 = *((T*)((uchar*)src + j - sizeof(T)));
+                T t0 = *((const T*)(src + i));
+                T t1 = *((const T*)(src + j - sizeof(T)));
                 *((T*)(dst + j - sizeof(T))) = t0;
                 *((T*)(dst + i)) = t1;
             }
@@ -399,194 +352,193 @@ template<typename V> CV_ALWAYS_INLINE void flipHoriz_single( const uchar* src, s
             {
                 for (int k = 0; k < (int)sizeof(T); k++)
                 {
-                    uchar t0, t1;
-
-                    t0 = *((uchar*)src + i + k);
-                    t1 = *((uchar*)src + j + k - sizeof(T));
-                    *(dst + j + k - sizeof(T)) = t0;
-                    *(dst + i + k) = t1;
+                    uchar t0 = src[i + k];
+                    uchar t1 = src[j + k - sizeof(T)];
+                    dst[j + k - sizeof(T)] = t0;
+                    dst[i + k] = t1;
                 }
             }
         }
     }
 }
 
-template<typename T1, typename T2> CV_ALWAYS_INLINE void flipHoriz_double( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size, size_t esz )
+// SIMD for C3
+template<typename V>
+CV_ALWAYS_INLINE void flipHoriz_c3( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size )
 {
-    int end = (int)(size.width*esz);
-    int width = (end + 1)/2;
+    typedef typename VTraits<V>::lane_type T;
+    const int vlanes = VTraits<V>::vlanes();
+    const int stride = 3 * sizeof(T);
+    int width = size.width;
+    int centre = (width + 1) / 2;
+    int width_simd = (centre / vlanes) * vlanes;
+    int height = size.height;
 
-#if CV_STRONG_ALIGNMENT
-    CV_Assert(isAligned<sizeof(T1)>(src, dst));
-    CV_Assert(isAligned<sizeof(T2)>(src, dst));
-#endif
-
-    for( ; size.height--; src += sstep, dst += dstep )
+    for( ; height--; src += sstep, dst += dstep )
     {
-        for ( int i = 0, j = end; i < width; i += sizeof(T1) + sizeof(T2), j -= sizeof(T1) + sizeof(T2) )
+        int i = 0;
+        for( ; i < width_simd; i += vlanes )
         {
-            T1 t0, t1;
-            T2 t2, t3;
-
-            t0 = *((T1*)((uchar*)src + i));
-            t2 = *((T2*)((uchar*)src + i + sizeof(T1)));
-            t1 = *((T1*)((uchar*)src + j - sizeof(T1) - sizeof(T2)));
-            t3 = *((T2*)((uchar*)src + j - sizeof(T2)));
-            *((T1*)(dst + j - sizeof(T1) - sizeof(T2))) = t0;
-            *((T2*)(dst + j - sizeof(T2))) = t2;
-            *((T1*)(dst + i)) = t1;
-            *((T2*)(dst + i + sizeof(T1))) = t3;
+            V r0, g0, b0;
+            v_load_deinterleave((const T*)(src + i * stride), r0, g0, b0);
+            V r1, g1, b1;
+            v_load_deinterleave((const T*)(src + (width - i - vlanes) * stride), r1, g1, b1);
+            r0 = v_reverse(r0);
+            g0 = v_reverse(g0);
+            b0 = v_reverse(b0);
+            r1 = v_reverse(r1);
+            g1 = v_reverse(g1);
+            b1 = v_reverse(b1);
+            v_store_interleave((T*)(dst + (width - i - vlanes) * stride), r0, g0, b0);
+            v_store_interleave((T*)(dst + i * stride), r1, g1, b1);
+        }
+        // Scalar tail loop for remaining pixels
+        for( ; i < centre; i++ )
+        {
+            int j = width - i - 1;
+            T c0 = ((const T*)(src + i * stride))[0];
+            T c1 = ((const T*)(src + i * stride))[1];
+            T c2 = ((const T*)(src + i * stride))[2];
+            T c3 = ((const T*)(src + j * stride))[0];
+            T c4 = ((const T*)(src + j * stride))[1];
+            T c5 = ((const T*)(src + j * stride))[2];
+            ((T*)(dst + j * stride))[0] = c0;
+            ((T*)(dst + j * stride))[1] = c1;
+            ((T*)(dst + j * stride))[2] = c2;
+            ((T*)(dst + i * stride))[0] = c3;
+            ((T*)(dst + i * stride))[1] = c4;
+            ((T*)(dst + i * stride))[2] = c5;
         }
     }
 }
-#endif
 
-static void
-flipHoriz( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size, size_t esz )
+// SIMD flip when ESZ multiple of vlanes
+template<size_t ESZ>
+CV_ALWAYS_INLINE void flipHoriz_vlanes_match( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size)
 {
+    const int vlanes = VTraits<v_uint8>::vlanes();
+    int end = (int)(size.width * ESZ);
+    int width = end / 2;
+    int height = size.height;
+    int eSize = (int)ESZ;
+    for( ; height--; src += sstep, dst += dstep )
+    {
+        for( int i = 0, j = end - eSize; i < width; i += eSize, j -= eSize )
+        {
+            for( int k = 0; k < eSize; k += vlanes )
+            {
+                v_uint8 t0 = vx_load(src + i + k);
+                v_uint8 t1 = vx_load(src + j + k);
+                v_store(dst + j + k, t0);
+                v_store(dst + i + k, t1);
+            }
+        }
+    }
+}
+
 #if CV_SIMD128
-#if CV_STRONG_ALIGNMENT
-    size_t alignmentMark = ((size_t)src)|((size_t)dst)|sstep|dstep;
-#endif
-    if (esz == 2 * (size_t)VTraits<v_uint8x16>::vlanes())
+// SIMD flip when ESZ=16 (128-bit)
+template<size_t ESZ>
+CV_ALWAYS_INLINE void flipHoriz_vlanes_match_128( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size)
+{
+    const int vlanes16 = VTraits<v_uint8x16>::vlanes();
+    int end = (int)(size.width * ESZ);
+    int width = end / 2;
+    int height = size.height;
+    for( ; height--; src += sstep, dst += dstep )
     {
-        int end = (int)(size.width*esz);
-        int width = end/2;
-
-        for( ; size.height--; src += sstep, dst += dstep )
+        for( int i = 0, j = end - vlanes16; i < width; i += vlanes16, j -= vlanes16 )
         {
-            for( int i = 0, j = end - 2 * VTraits<v_uint8x16>::vlanes(); i < width; i += 2 * VTraits<v_uint8x16>::vlanes(), j -= 2 * VTraits<v_uint8x16>::vlanes() )
-            {
-#if CV_SIMD256
-                v_uint8x32 t0, t1;
-
-                t0 = v256_load((uchar*)src + i);
-                t1 = v256_load((uchar*)src + j);
-                v_store(dst + j, t0);
-                v_store(dst + i, t1);
-#else
-                v_uint8x16 t0, t1, t2, t3;
-
-                t0 = v_load((uchar*)src + i);
-                t1 = v_load((uchar*)src + i + VTraits<v_uint8x16>::vlanes());
-                t2 = v_load((uchar*)src + j);
-                t3 = v_load((uchar*)src + j + VTraits<v_uint8x16>::vlanes());
-                v_store(dst + j, t0);
-                v_store(dst + j + VTraits<v_uint8x16>::vlanes(), t1);
-                v_store(dst + i, t2);
-                v_store(dst + i + VTraits<v_uint8x16>::vlanes(), t3);
-#endif
-            }
+            v_uint8x16 t0 = v_load(src + i);
+            v_uint8x16 t1 = v_load(src + j);
+            v_store(dst + j, t0);
+            v_store(dst + i, t1);
         }
     }
-    else if (esz == (size_t)VTraits<v_uint8x16>::vlanes())
-    {
-        int end = (int)(size.width*esz);
-        int width = end/2;
-
-        for( ; size.height--; src += sstep, dst += dstep )
-        {
-            for( int i = 0, j = end - VTraits<v_uint8x16>::vlanes(); i < width; i += VTraits<v_uint8x16>::vlanes(), j -= VTraits<v_uint8x16>::vlanes() )
-            {
-                v_uint8x16 t0, t1;
-
-                t0 = v_load((uchar*)src + i);
-                t1 = v_load((uchar*)src + j);
-                v_store(dst + j, t0);
-                v_store(dst + i, t1);
-            }
-        }
-    }
-    else if (esz == 8
-#if CV_STRONG_ALIGNMENT
-            && isAligned<sizeof(uint64)>(alignmentMark)
-#endif
-    )
-    {
-        flipHoriz_single<v_uint64x2>(src, sstep, dst, dstep, size, esz);
-    }
-    else if (esz == 4
-#if CV_STRONG_ALIGNMENT
-            && isAligned<sizeof(unsigned)>(alignmentMark)
-#endif
-    )
-    {
-        flipHoriz_single<v_uint32x4>(src, sstep, dst, dstep, size, esz);
-    }
-    else if (esz == 2
-#if CV_STRONG_ALIGNMENT
-            && isAligned<sizeof(ushort)>(alignmentMark)
-#endif
-    )
-    {
-        flipHoriz_single<v_uint16x8>(src, sstep, dst, dstep, size, esz);
-    }
-    else if (esz == 1)
-    {
-        flipHoriz_single<v_uint8x16>(src, sstep, dst, dstep, size, esz);
-    }
-    else if (esz == 24
-#if CV_STRONG_ALIGNMENT
-            && isAligned<sizeof(uint64_t)>(alignmentMark)
-#endif
-    )
-    {
-        int end = (int)(size.width*esz);
-        int width = (end + 1)/2;
-
-        for( ; size.height--; src += sstep, dst += dstep )
-        {
-            for ( int i = 0, j = end; i < width; i += VTraits<v_uint8x16>::vlanes() + sizeof(uint64_t), j -= VTraits<v_uint8x16>::vlanes() + sizeof(uint64_t) )
-            {
-                v_uint8x16 t0, t1;
-                uint64_t t2, t3;
-
-                t0 = v_load((uchar*)src + i);
-                t2 = *((uint64_t*)((uchar*)src + i + VTraits<v_uint8x16>::vlanes()));
-                t1 = v_load((uchar*)src + j - VTraits<v_uint8x16>::vlanes() - sizeof(uint64_t));
-                t3 = *((uint64_t*)((uchar*)src + j - sizeof(uint64_t)));
-                v_store(dst + j - VTraits<v_uint8x16>::vlanes() - sizeof(uint64_t), t0);
-                *((uint64_t*)(dst + j - sizeof(uint64_t))) = t2;
-                v_store(dst + i, t1);
-                *((uint64_t*)(dst + i + VTraits<v_uint8x16>::vlanes())) = t3;
-            }
-        }
-    }
-#if !CV_STRONG_ALIGNMENT
-    else if (esz == 12)
-    {
-        flipHoriz_double<uint64_t,uint>(src, sstep, dst, dstep, size, esz);
-    }
-    else if (esz == 6)
-    {
-        flipHoriz_double<uint,ushort>(src, sstep, dst, dstep, size, esz);
-    }
-    else if (esz == 3)
-    {
-        flipHoriz_double<ushort,uchar>(src, sstep, dst, dstep, size, esz);
-    }
-#endif
-    else
+}
 #endif // CV_SIMD128
+
+// SIMD flip for ESZ=16,32
+template<size_t ESZ>
+CV_ALWAYS_INLINE void flipHoriz_vlanes_dispatch( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size )
+{
+    const int vlanes = VTraits<v_uint8>::vlanes();
+#if CV_SIMD128
+    const int vlanes16 = VTraits<v_uint8x16>::vlanes();
+#endif
+    if ( (ESZ == (size_t)vlanes) || (ESZ == 2 * (size_t)vlanes))
     {
-        int i, j, limit = (int)(((size.width + 1)/2)*esz);
-        AutoBuffer<int> _tab(size.width*esz);
-        int* tab = _tab.data();
+        flipHoriz_vlanes_match<ESZ>(src, sstep, dst, dstep, size);
+        return;
+    }
+#if CV_SIMD128
+    else if (ESZ == vlanes16)
+    {
+        flipHoriz_vlanes_match_128<ESZ>(src, sstep, dst, dstep, size);
+        return;
+    }
+#endif
+    flipHoriz_generic(src, sstep, dst, dstep, size, ESZ);
+}
 
-        for( i = 0; i < size.width; i++ )
-            for( size_t k = 0; k < esz; k++ )
-                tab[i*esz + k] = (int)((size.width - i - 1)*esz + k);
-
-        for( ; size.height--; src += sstep, dst += dstep )
+#if CV_SIMD128
+// SIMD flip for ESZ=24 (CV_64FC3)
+CV_ALWAYS_INLINE void flipHoriz_24( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size )
+{
+#if CV_STRONG_ALIGNMENT
+    // This kernel performs 64-bit scalar loads/stores, so require 8-byte alignment.
+    if (!isAligned<8>(((size_t)src)|((size_t)dst)|sstep|dstep))
+    {
+        flipHoriz_generic(src, sstep, dst, dstep, size, 24);
+        return;
+    }
+#endif
+    const int lanes16 = 16;
+    int end = (int)(size.width * 24);
+    int width = (end + 1) / 2;
+    int height = size.height;
+    for( ; height--; src += sstep, dst += dstep )
+    {
+        for ( int i = 0, j = end; i < width; i += lanes16 + 8, j -= lanes16 + 8 )
         {
-            for( i = 0; i < limit; i++ )
-            {
-                j = tab[i];
-                uchar t0 = src[i], t1 = src[j];
-                dst[i] = t1; dst[j] = t0;
-            }
+            v_uint8x16 t0 = v_load(src + i);
+            uint64_t t2 = *reinterpret_cast<const uint64_t*>(src + i + lanes16);
+            v_uint8x16 t1 = v_load(src + j - lanes16 - 8);
+            uint64_t t3 = *reinterpret_cast<const uint64_t*>(src + j - 8);
+            v_store(dst + j - lanes16 - 8, t0);
+            *reinterpret_cast<uint64_t*>(dst + j - 8) = t2;
+            v_store(dst + i, t1);
+            *reinterpret_cast<uint64_t*>(dst + i + lanes16) = t3;
         }
     }
+}
+#endif // CV_SIMD128
+#endif // CV_SIMD || CV_SIMD_SCALABLE
+
+static void flipHoriz( const uchar* src, size_t sstep, uchar* dst, size_t dstep, Size size, size_t esz )
+{
+#if CV_SIMD || CV_SIMD_SCALABLE
+    // SIMD-optimized dispatch
+    switch(esz)
+    {
+        case 1:   flipHoriz_single<v_uint8>(src, sstep, dst, dstep, size); return;            // CV_8UC1: 8-bit, 1 channel
+        case 2:   flipHoriz_single<v_uint16>(src, sstep, dst, dstep, size); return;           // CV_8UC2, CV_16UC1: 8-bit 2-channel or 16-bit 1-channel
+        case 3:   flipHoriz_c3<v_uint8>(src, sstep, dst, dstep, size); return;                // CV_8UC3: 8-bit, 3 channels
+        case 4:   flipHoriz_single<v_uint32>(src, sstep, dst, dstep, size); return;           // CV_8UC4, CV_16UC2, CV_32SC1, CV_32FC1: 8-bit 4-channel, 16-bit 2-channel, or 32-bit 1-channel
+        case 6:   flipHoriz_c3<v_uint16>(src, sstep, dst, dstep, size); return;               // CV_16UC3, CV_16SC3: 16-bit, 3 channels
+        case 8:   flipHoriz_single<v_uint64>(src, sstep, dst, dstep, size); return;           // CV_16UC4, CV_32SC2, CV_32FC2, CV_64FC1: 16-bit 4-channel, 32-bit 2-channel, or 64-bit 1-channel
+        case 12:  flipHoriz_c3<v_uint32>(src, sstep, dst, dstep, size); return;               // CV_32SC3, CV_32FC3: 32-bit, 3 channels
+        case 16:  flipHoriz_vlanes_dispatch<16>(src, sstep, dst, dstep, size); return;        // CV_32SC4, CV_32FC4, CV_64FC2: 32-bit 4-channel or 64-bit 2-channel
+#if CV_SIMD128
+        case 24:  flipHoriz_24(src, sstep, dst, dstep, size); return;                         // CV_64FC3: 64-bit, 3 channels
+#endif
+        case 32:  flipHoriz_vlanes_dispatch<32>(src, sstep, dst, dstep, size); return;        // CV_64FC4: 64-bit, 4 channels
+        default:
+            break; // Fall through to generic implementation
+    }
+#endif
+    // Fallback: generic scalar
+    flipHoriz_generic(src, sstep, dst, dstep, size, esz);
 }
 
 static void
@@ -735,48 +687,6 @@ static bool ocl_flip(InputArray _src, OutputArray _dst, int flipCode )
 
 #endif
 
-#if defined HAVE_IPP
-static bool ipp_flip(Mat &src, Mat &dst, int flip_mode)
-{
-#ifdef HAVE_IPP_IW
-    CV_INSTRUMENT_REGION_IPP();
-
-    // Details: https://github.com/opencv/opencv/issues/12943
-    if (flip_mode <= 0 /* swap rows */
-        && cv::ipp::getIppTopFeatures() != ippCPUID_SSE42
-        && (int64_t)(src.total()) * src.elemSize() >= CV_BIG_INT(0x80000000)/*2Gb*/
-    )
-        return false;
-
-    IppiAxis ippMode;
-    if(flip_mode < 0)
-        ippMode = ippAxsBoth;
-    else if(flip_mode == 0)
-        ippMode = ippAxsHorizontal;
-    else
-        ippMode = ippAxsVertical;
-
-    try
-    {
-        ::ipp::IwiImage iwSrc = ippiGetImage(src);
-        ::ipp::IwiImage iwDst = ippiGetImage(dst);
-
-        CV_INSTRUMENT_FUN_IPP(::ipp::iwiMirror, iwSrc, iwDst, ippMode);
-    }
-    catch(const ::ipp::IwException &)
-    {
-        return false;
-    }
-
-    return true;
-#else
-    CV_UNUSED(src); CV_UNUSED(dst); CV_UNUSED(flip_mode);
-    return false;
-#endif
-}
-#endif
-
-
 void flip( InputArray _src, OutputArray _dst, int flip_mode )
 {
     CV_INSTRUMENT_REGION();
@@ -807,8 +717,6 @@ void flip( InputArray _src, OutputArray _dst, int flip_mode )
 
     CALL_HAL(flip, cv_hal_flip, type, src.ptr(), src.step, src.cols, src.rows,
              dst.ptr(), dst.step, flip_mode);
-
-    CV_IPP_RUN_FAST(ipp_flip(src, dst, flip_mode));
 
     size_t esz = CV_ELEM_SIZE(type);
 

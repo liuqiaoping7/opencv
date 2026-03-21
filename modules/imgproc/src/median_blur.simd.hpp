@@ -13,6 +13,7 @@
 // Copyright (C) 2000-2008, 2018, Intel Corporation, all rights reserved.
 // Copyright (C) 2009, Willow Garage Inc., all rights reserved.
 // Copyright (C) 2014-2015, Itseez Inc., all rights reserved.
+// Copyright (C) 2025, Advanced Micro Devices, all rights reserved.
 // Third party copyrights are property of their respective owners.
 //
 // Redistribution and use in source and binary forms, with or without modification,
@@ -359,7 +360,7 @@ medianBlur_8u_Om( const Mat& _src, Mat& _dst, int m )
     uchar*  dst = _dst.ptr();
     int     src_step = (int)_src.step, dst_step = (int)_dst.step;
     int     cn = _src.channels();
-    const uchar*  src_max = src + size.height*src_step;
+    const uchar*  src_max = src + (size_t)size.height*src_step;
     CV_Assert(cn > 0 && cn <= 4);
 
     #define UPDATE_ACC01( pix, cn, op ) \
@@ -380,8 +381,8 @@ medianBlur_8u_Om( const Mat& _src, Mat& _dst, int m )
 
         if( x % 2 != 0 )
         {
-            src_bottom = src_top += src_step*(size.height-1);
-            dst_cur += dst_step*(size.height-1);
+            src_bottom = src_top += (size_t)src_step*(size.height-1);
+            dst_cur += (size_t)dst_step*(size.height-1);
             src_step1 = -src_step1;
             dst_step1 = -dst_step1;
         }
@@ -662,9 +663,9 @@ medianBlur_SortNet( const Mat& _src, Mat& _dst, int m )
         size.width *= cn;
         for( i = 0; i < size.height; i++, dst += dstep )
         {
-            const T* row0 = src + std::max(i - 1, 0)*sstep;
-            const T* row1 = src + i*sstep;
-            const T* row2 = src + std::min(i + 1, size.height-1)*sstep;
+            const T* row0 = src + (size_t)std::max(i - 1, 0)*sstep;
+            const T* row1 = src + (size_t)i*sstep;
+            const T* row2 = src + (size_t)std::min(i + 1, size.height-1)*sstep;
             int limit = cn;
 
             for(j = 0;; )
@@ -693,8 +694,16 @@ medianBlur_SortNet( const Mat& _src, Mat& _dst, int m )
 #else
                 int nlanes = 1;
 #endif
-                for( ; j <= size.width - nlanes - cn; j += nlanes )
+                for (; j < size.width - cn; j += nlanes)
                 {
+                    //handling tail in vectorized path itself
+                    if ( j > size.width - cn - nlanes ) {
+                        if (j == cn || src == dst) {
+                            break;
+                        }
+                        j = size.width - cn - nlanes;
+                    }
+
                     VT p0 = vop.load(row0+j-cn), p1 = vop.load(row0+j), p2 = vop.load(row0+j+cn);
                     VT p3 = vop.load(row1+j-cn), p4 = vop.load(row1+j), p5 = vop.load(row1+j+cn);
                     VT p6 = vop.load(row2+j-cn), p7 = vop.load(row2+j), p8 = vop.load(row2+j+cn);
@@ -705,6 +714,7 @@ medianBlur_SortNet( const Mat& _src, Mat& _dst, int m )
                     vop(p3, p6); vop(p1, p4); vop(p2, p5); vop(p4, p7);
                     vop(p4, p2); vop(p6, p4); vop(p4, p2);
                     vop.store(dst+j, p4);
+
                 }
 
                 limit = size.width;
@@ -740,11 +750,11 @@ medianBlur_SortNet( const Mat& _src, Mat& _dst, int m )
         for( i = 0; i < size.height; i++, dst += dstep )
         {
             const T* row[5];
-            row[0] = src + std::max(i - 2, 0)*sstep;
-            row[1] = src + std::max(i - 1, 0)*sstep;
-            row[2] = src + i*sstep;
-            row[3] = src + std::min(i + 1, size.height-1)*sstep;
-            row[4] = src + std::min(i + 2, size.height-1)*sstep;
+            row[0] = src + (size_t)std::max(i - 2, 0)*sstep;
+            row[1] = src + (size_t)std::max(i - 1, 0)*sstep;
+            row[2] = src + (size_t)i*sstep;
+            row[3] = src + (size_t)std::min(i + 1, size.height-1)*sstep;
+            row[4] = src + (size_t)std::min(i + 2, size.height-1)*sstep;
             int limit = cn*2;
 
             for(j = 0;; )
@@ -798,8 +808,14 @@ medianBlur_SortNet( const Mat& _src, Mat& _dst, int m )
 #else
                 int nlanes = 1;
 #endif
-                for( ; j <= size.width - nlanes - cn*2; j += nlanes )
+                for( ; j < size.width - cn*2; j += nlanes)
                 {
+                    if ( j > size.width - cn*2 - nlanes ) {
+                        if (j == cn*2 || src == dst) {
+                            break;
+                        }
+                        j = size.width - cn*2 - nlanes;
+                    }
                     VT p0 = vop.load(row[0]+j-cn*2), p5 = vop.load(row[1]+j-cn*2), p10 = vop.load(row[2]+j-cn*2), p15 = vop.load(row[3]+j-cn*2), p20 = vop.load(row[4]+j-cn*2);
                     VT p1 = vop.load(row[0]+j-cn*1), p6 = vop.load(row[1]+j-cn*1), p11 = vop.load(row[2]+j-cn*1), p16 = vop.load(row[3]+j-cn*1), p21 = vop.load(row[4]+j-cn*1);
                     VT p2 = vop.load(row[0]+j-cn*0), p7 = vop.load(row[1]+j-cn*0), p12 = vop.load(row[2]+j-cn*0), p17 = vop.load(row[3]+j-cn*0), p22 = vop.load(row[4]+j-cn*0);
@@ -830,6 +846,7 @@ medianBlur_SortNet( const Mat& _src, Mat& _dst, int m )
                     vop(p13, p17); vop(p3, p15); vop(p11, p23); vop(p11, p15); vop(p7, p19);
                     vop(p7, p11); vop(p11, p13); vop(p11, p12);
                     vop.store(dst+j, p12);
+
                 }
 
                 limit = size.width;

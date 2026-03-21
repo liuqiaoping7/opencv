@@ -66,6 +66,7 @@ void CV_ArucoBoardPose::run(int) {
                 vector<vector<Point2f> > corners;
                 vector<int> ids;
                 detectorParameters.markerBorderBits = markerBorder;
+                detectorParameters.validBitIdThreshold = 0.5f;
                 detector.setDetectorParameters(detectorParameters);
                 detector.detectMarkers(img, corners, ids);
 
@@ -134,14 +135,17 @@ class CV_ArucoRefine : public cvtest::BaseTest {
     public:
     CV_ArucoRefine(ArucoAlgParams arucoAlgParams)
     {
-        aruco::Dictionary dictionary = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
+        vector<aruco::Dictionary> dictionaries = {aruco::getPredefinedDictionary(aruco::DICT_6X6_250),
+            aruco::getPredefinedDictionary(aruco::DICT_5X5_250),
+            aruco::getPredefinedDictionary(aruco::DICT_4X4_250),
+            aruco::getPredefinedDictionary(aruco::DICT_7X7_250)};
         aruco::DetectorParameters params;
         params.minDistanceToBorder = 3;
         params.cornerRefinementMethod = (int)aruco::CORNER_REFINE_SUBPIX;
         if (arucoAlgParams == ArucoAlgParams::USE_ARUCO3)
             params.useAruco3Detection = true;
         aruco::RefineParameters refineParams(10.f, 3.f, true);
-        detector = aruco::ArucoDetector(dictionary, params, refineParams);
+        detector = aruco::ArucoDetector(dictionaries, params, refineParams);
     }
 
     protected:

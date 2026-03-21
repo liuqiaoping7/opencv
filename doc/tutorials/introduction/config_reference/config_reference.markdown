@@ -64,6 +64,21 @@ Only 0- and 1-level deep module locations are supported, following command will 
 cmake -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib ../opencv
 ```
 
+## Build with C++ Standard setting {#tutorial_config_reference_general_cxx_standard}
+
+`CMAKE_CXX_STANDARD` option can be used to set C++ standard settings for OpenCV building.
+
+```.sh
+cmake -DCMAKE_CXX_STANDARD=17 ../opencv
+cmake --build .
+```
+
+- C++11 is default/required/recommended for OpenCV 4.x. C++17 is default/required/recomended for OpenCV 5.x.
+- If your compiler does not support required C++ Standard features, OpenCV configuration should be fail.
+- If you set older C++ Standard than required, OpenCV configuration should be fail.
+  For workaround, `OPENCV_SKIP_CMAKE_CXX_STANDARD` option can be used to skip `CMAKE_CXX_STANDARD` version check.
+- If you set newer C++ Standard than recomended, numerous warnings may appear or OpenCV build may fail.
+
 
 ## Debug build {#tutorial_config_reference_general_debug}
 
@@ -300,9 +315,9 @@ Following formats can be read by OpenCV without help of any third-party library:
 | [Sun Raster](https://en.wikipedia.org/wiki/Sun_Raster) | `WITH_IMGCODEC_SUNRASTER` | _ON_ |
 | [PPM, PGM, PBM, PAM](https://en.wikipedia.org/wiki/Netpbm#File_formats) | `WITH_IMGCODEC_PXM` | _ON_ |
 | [PFM](https://en.wikipedia.org/wiki/Netpbm#File_formats) | `WITH_IMGCODEC_PFM` | _ON_ |
-| [GIF](https://en.wikipedia.org/wiki/GIF) | `WITH_IMGCODEC_GIF` | _OFF_ |
+| [GIF](https://en.wikipedia.org/wiki/GIF) | `WITH_IMGCODEC_GIF` | _ON_ |
 
-### PNG, JPEG, TIFF, WEBP, JPEG 2000, EXR, JPEG XL support
+### PNG, JPEG, TIFF, WEBP, JPEG 2000, EXR, JPEG XL, AVIF support
 
 | Formats | Library | Option | Default | Force build own |
 | --------| ------- | ------ | ------- | --------------- |
@@ -316,12 +331,16 @@ Following formats can be read by OpenCV without help of any third-party library:
 |^| [JasPer](https://en.wikipedia.org/wiki/JasPer) | `WITH_JASPER` | _ON_ (see note) | `BUILD_JASPER` |
 | [OpenEXR](https://en.wikipedia.org/wiki/OpenEXR) || `WITH_OPENEXR` | _ON_ | `BUILD_OPENEXR` |
 | [JPEG XL](https://en.wikipedia.org/wiki/JPEG_XL) || `WITH_JPEGXL` | _ON_ | Not supported. (see note) |
+| [AVIF](https://en.wikipedia.org/wiki/AVIF) || `WITH_AVIF` | _ON_ | Not supported. (see note) |
 
-All libraries required to read images in these formats are included into OpenCV and will be built automatically if not found at the configuration stage. Corresponding `BUILD_*` options will force building and using own libraries, they are enabled by default on some platforms, e.g. Windows.
+Most library source codes required to read/write images in these formats are bundled into OpenCV and will be built automatically if not found at the configuration stage
+(except for some codecs that require external libraries, e.g. JPEG XL and AVIF).
+Corresponding BUILD_* options will force building and using the bundled libraries; they are enabled by default on some platforms, e.g. Windows.
 
 @note (All) Only one library for each image format can be enabled(e.g. In order to use JasPer for JPEG 2000 format, OpenJPEG must be disabled).
 @note (JPEG 2000) OpenJPEG have higher priority than JasPer which is deprecated.
-@note (JPEG XL) OpenCV doesn't contain libjxl source code, so `BUILD_JPEGXL` is not supported.
+@note (JPEG XL) OpenCV doesn't contain libjxl source code, so `BUILD_JPEGXL` is not supported. Users must provide a system-wide installation of libjxl.
+@note (AVIF) OpenCV doesn't contain libavif source code, so `BUILD_AVIF` is not supported. Users must provide a system-wide installation of libavif.
 
 @warning OpenEXR ver 2.2 or earlier cannot be used in combination with C++17 or later. In this case, updating OpenEXR ver 2.3.0 or later is required.
 

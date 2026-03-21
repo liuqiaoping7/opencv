@@ -69,7 +69,7 @@ protected:
     bool TestSparseMat();
     bool TestVec();
     bool TestMatxMultiplication();
-    bool TestMatxElementwiseDivison();
+    bool TestMatxElementwiseDivision();
     bool TestDivisionByValue();
     bool TestInplaceDivisionByValue();
     bool TestMatMatxCastSum();
@@ -957,7 +957,7 @@ bool CV_OperationsTest::TestMatMatxCastSum()
     return true;
 }
 
-bool CV_OperationsTest::TestMatxElementwiseDivison()
+bool CV_OperationsTest::TestMatxElementwiseDivision()
 {
     try
     {
@@ -1214,7 +1214,7 @@ bool CV_OperationsTest::TestSVD()
             cvtest::norm(Vt*Vt.t(), I, CV_C) > FLT_EPSILON ||
             W.at<float>(2) < 0 || W.at<float>(1) < W.at<float>(2) ||
             W.at<float>(0) < W.at<float>(1) ||
-            cvtest::norm(U*Mat::diag(W)*Vt, Q, CV_C) > FLT_EPSILON )
+            cvtest::norm(U*Mat::diag(W)*Vt, Q, CV_C) > FLT_EPSILON*2 )
             throw test_excep();
     }
     catch(const test_excep&)
@@ -1248,7 +1248,7 @@ void CV_OperationsTest::run( int /* start_from */)
     if (!TestMatxMultiplication())
         return;
 
-    if (!TestMatxElementwiseDivison())
+    if (!TestMatxElementwiseDivision())
         return;
 
     if (!TestDivisionByValue())

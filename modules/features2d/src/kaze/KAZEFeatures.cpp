@@ -66,7 +66,7 @@ void KAZEFeatures::Allocate_Memory_Evolution(void) {
             aux.Lt = Mat::zeros(options_.img_height, options_.img_width, CV_32F);
             aux.Lsmooth = Mat::zeros(options_.img_height, options_.img_width, CV_32F);
             aux.Ldet = Mat::zeros(options_.img_height, options_.img_width, CV_32F);
-            aux.esigma = options_.soffset*pow((float)2.0f, (float)(j) / (float)(options_.nsublevels)+i);
+            aux.esigma = (float)(options_.soffset*std::pow(2, (float)(j) / (float)(options_.nsublevels)+i));
             aux.etime = 0.5f*(aux.esigma*aux.esigma);
             aux.sigma_size = cvRound(aux.esigma);
             aux.octave = i;
@@ -128,6 +128,10 @@ int KAZEFeatures::Create_Nonlinear_Scale_Space(const Mat &img)
             pm_g2(evolution_[i].Lx, evolution_[i].Ly, Lflow, options_.kcontrast);
         else if (options_.diffusivity == KAZE::DIFF_WEICKERT)
             weickert_diffusivity(evolution_[i].Lx, evolution_[i].Ly, Lflow, options_.kcontrast);
+        else if (options_.diffusivity == KAZE::DIFF_CHARBONNIER)
+            charbonnier_diffusivity(evolution_[i].Lx, evolution_[i].Ly, Lflow, options_.kcontrast);
+        else
+            CV_Error_(Error::StsError, ("Diffusivity is not supported: %d", static_cast<int>(options_.diffusivity)));
 
         // Perform FED n inner steps
         for (int j = 0; j < nsteps_[i - 1]; j++)
@@ -472,7 +476,7 @@ void KAZEFeatures::Do_Subpixel_Refinement(std::vector<KeyPoint> &kpts) {
                         dsc = kpts_[i].octave + (kpts_[i].angle + *(dst.ptr<float>(2))) / ((float)(options_.nsublevels));
 
             // In OpenCV the size of a keypoint is the diameter!!
-                        kpts_[i].size = 2.0f*options_.soffset*pow((float)2.0f, dsc);
+                        kpts_[i].size = (float)(2*options_.soffset*std::pow(2, dsc));
             kpts_[i].angle = 0.0;
         }
         // Set the points to be deleted after the for loop

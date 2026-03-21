@@ -43,7 +43,6 @@
 #include "precomp.hpp"
 #include "opencl_kernels_imgproc.hpp"
 
-#include "opencv2/core/openvx/ovx_defs.hpp"
 #include "filter.hpp"
 
 /****************************************************************************************\
@@ -182,83 +181,6 @@ cv::Ptr<cv::FilterEngine> cv::createDerivFilter(int srcType, int dstType,
         kx, ky, Point(-1,-1), 0, borderType );
 }
 
-#ifdef HAVE_OPENVX
-namespace cv
-{
-    namespace ovx {
-        template <> inline bool skipSmallImages<VX_KERNEL_SOBEL_3x3>(int w, int h) { return w*h < 320 * 240; }
-    }
-    static bool openvx_sobel(InputArray _src, OutputArray _dst,
-                             int dx, int dy, int ksize,
-                             double scale, double delta, int borderType)
-    {
-        if (_src.type() != CV_8UC1 || _dst.type() != CV_16SC1 ||
-            ksize != 3 || scale != 1.0 || delta != 0.0 ||
-            (dx | dy) != 1 || (dx + dy) != 1 ||
-            _src.cols() < ksize || _src.rows() < ksize ||
-            ovx::skipSmallImages<VX_KERNEL_SOBEL_3x3>(_src.cols(), _src.rows())
-            )
-            return false;
-
-        Mat src = _src.getMat();
-        Mat dst = _dst.getMat();
-
-        if ((borderType & BORDER_ISOLATED) == 0 && src.isSubmatrix())
-            return false; //Process isolated borders only
-        vx_enum border;
-        switch (borderType & ~BORDER_ISOLATED)
-        {
-        case BORDER_CONSTANT:
-            border = VX_BORDER_CONSTANT;
-            break;
-        case BORDER_REPLICATE:
-//            border = VX_BORDER_REPLICATE;
-//            break;
-        default:
-            return false;
-        }
-
-        try
-        {
-            ivx::Context ctx = ovx::getOpenVXContext();
-            //if ((vx_size)ksize > ctx.convolutionMaxDimension())
-            //    return false;
-
-            Mat a;
-            if (dst.data != src.data)
-                a = src;
-            else
-                src.copyTo(a);
-
-            ivx::Image
-                ia = ivx::Image::createFromHandle(ctx, VX_DF_IMAGE_U8,
-                    ivx::Image::createAddressing(a.cols, a.rows, 1, (vx_int32)(a.step)), a.data),
-                ib = ivx::Image::createFromHandle(ctx, VX_DF_IMAGE_S16,
-                    ivx::Image::createAddressing(dst.cols, dst.rows, 2, (vx_int32)(dst.step)), dst.data);
-
-            //ATTENTION: VX_CONTEXT_IMMEDIATE_BORDER attribute change could lead to strange issues in multi-threaded environments
-            //since OpenVX standard says nothing about thread-safety for now
-            ivx::border_t prevBorder = ctx.immediateBorder();
-            ctx.setImmediateBorder(border, (vx_uint8)(0));
-            if(dx)
-                ivx::IVX_CHECK_STATUS(vxuSobel3x3(ctx, ia, ib, NULL));
-            else
-                ivx::IVX_CHECK_STATUS(vxuSobel3x3(ctx, ia, NULL, ib));
-            ctx.setImmediateBorder(prevBorder);
-        }
-        catch (const ivx::RuntimeError & e)
-        {
-            VX_DbgThrow(e.what());
-        }
-        catch (const ivx::WrapperError & e)
-        {
-            VX_DbgThrow(e.what());
-        }
-
-        return true;
-    }
-}
-#endif
 
 #if 0 //defined HAVE_IPP
 namespace cv
@@ -455,9 +377,6 @@ void cv::Sobel( InputArray _src, OutputArray _dst, int ddepth, int dx, int dy,
 
     CALL_HAL(sobel, cv_hal_sobel, src.ptr(), src.step, dst.ptr(), dst.step, src.cols, src.rows, sdepth, ddepth, cn,
              ofs.x, ofs.y, wsz.width - src.cols - ofs.x, wsz.height - src.rows - ofs.y, dx, dy, ksize, scale, delta, borderType&~BORDER_ISOLATED);
-
-    CV_OVX_RUN(true,
-               openvx_sobel(src, dst, dx, dy, ksize, scale, delta, borderType))
 
     //CV_IPP_RUN_FAST(ipp_Deriv(src, dst, dx, dy, ksize, scale, delta, borderType));
 
@@ -796,15 +715,30 @@ void cv::Laplacian( InputArray _src, OutputArray _dst, int ddepth, int ksize,
         ddepth = sdepth;
     _dst.create( _src.size(), CV_MAKETYPE(ddepth, cn) );
 
+    int ktype = std::max(CV_32F, std::max(ddepth, sdepth));
+    Mat kernel;
+
     if( ksize == 1 || ksize == 3 )
     {
-        float K[2][9] =
+        static const double K[2][9] =
         {
             { 0, 1, 0, 1, -4, 1, 0, 1, 0 },
             { 2, 0, 2, 0, -8, 0, 2, 0, 2 }
         };
 
-        Mat kernel(3, 3, CV_32F, K[ksize == 3]);
+        kernel.create(3, 3, ktype);
+        if (ktype == CV_32F)
+        {
+            float* kptr = kernel.ptr<float>();
+            for (int i = 0; i < 9; ++i)
+                kptr[i] = static_cast<float>(K[ksize == 3][i]);
+        }
+        else
+        {
+            double* kptr = kernel.ptr<double>();
+            for (int i = 0; i < 9; ++i)
+                kptr[i] = K[ksize == 3][i];
+        }
         if( scale != 1 )
             kernel *= scale;
 
@@ -816,20 +750,10 @@ void cv::Laplacian( InputArray _src, OutputArray _dst, int ddepth, int ksize,
 
     if( ksize == 1 || ksize == 3 )
     {
-        float K[2][9] =
-        {
-            { 0, 1, 0, 1, -4, 1, 0, 1, 0 },
-            { 2, 0, 2, 0, -8, 0, 2, 0, 2 }
-        };
-        Mat kernel(3, 3, CV_32F, K[ksize == 3]);
-        if( scale != 1 )
-            kernel *= scale;
-
         filter2D( _src, _dst, ddepth, kernel, Point(-1, -1), delta, borderType );
     }
     else
     {
-        int ktype = std::max(CV_32F, std::max(ddepth, sdepth));
         int wdepth = sdepth == CV_8U && ksize <= 5 ? CV_16S : sdepth <= CV_32F ? CV_32F : CV_64F;
         int wtype = CV_MAKETYPE(wdepth, cn);
         Mat kd, ks;

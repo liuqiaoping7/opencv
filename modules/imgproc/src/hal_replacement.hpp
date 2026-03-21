@@ -87,6 +87,40 @@ int my_hal_filterFree(cvhalFilter2D *context) {
 struct cvhalFilter2D {};
 
 /**
+   @brief 2D filtering in a stateless manner
+   @param src_data source image data
+   @param src_step source image step
+   @param src_type source image type
+   @param dst_data destination image data
+   @param dst_step destination image step
+   @param dst_type destination image type
+   @param width images width
+   @param height images height
+   @param full_width full width of source image (outside the ROI)
+   @param full_height full height of source image (outside the ROI)
+   @param offset_x source image ROI offset X
+   @param offset_y source image ROI offset Y
+   @param kernel_data pointer to kernel data
+   @param kernel_step kernel step
+   @param kernel_type kernel type (CV_8U, ...)
+   @param kernel_width kernel width
+   @param kernel_height kernel height
+   @param anchor_x relative X position of center point within the kernel
+   @param anchor_y relative Y position of center point within the kernel
+   @param delta added to pixel values
+   @param borderType border processing mode (CV_HAL_BORDER_REFLECT, ...)
+   @param isSubmatrix indicates whether the submatrices will be allowed as source image
+   @param allowInplace indicates whether the inplace operation will be possible
+   @sa cv::filter2D, cv::hal::Filter2D
+ */
+inline int hal_ni_filter_stateless(const uchar * src_data, size_t src_step, int src_type,
+                                   uchar * dst_data, size_t dst_step, int dst_type,
+                                   int width, int height, int full_width, int full_height, int offset_x, int offset_y,
+                                   const uchar * kernel_data, size_t kernel_step, int kernel_type, int kernel_width, int kernel_height,
+                                   int anchor_x, int anchor_y, double delta, int borderType, bool isSubmatrix, bool allowInplace)
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+
+/**
    @brief hal_filterInit
    @param context double pointer to user-defined context
    @param kernel_data pointer to kernel data
@@ -131,10 +165,44 @@ inline int hal_ni_filter(cvhalFilter2D *context, uchar *src_data, size_t src_ste
 inline int hal_ni_filterFree(cvhalFilter2D *context) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 //! @cond IGNORED
+#define cv_hal_filter_stateless hal_ni_filter_stateless
 #define cv_hal_filterInit hal_ni_filterInit
 #define cv_hal_filter hal_ni_filter
 #define cv_hal_filterFree hal_ni_filterFree
 //! @endcond
+
+/**
+   @brief separable filtering in a stateless manner
+   @param src_data source image data
+   @param src_step source image step
+   @param src_type source image type
+   @param dst_data destination image data
+   @param dst_step destination image step
+   @param dst_type destination image type
+   @param width images width
+   @param height images height
+   @param full_width full width of source image (outside the ROI)
+   @param full_height full height of source image (outside the ROI)
+   @param offset_x source image ROI offset X
+   @param offset_y source image ROI offset Y
+   @param kernelx_data pointer to x-kernel data
+   @param kernelx_len x-kernel vector length
+   @param kernely_data pointer to y-kernel data
+   @param kernely_len y-kernel vector length
+   @param kernel_type kernel type (CV_8U, ...)
+   @param anchor_x relative X position of center point within the kernel
+   @param anchor_y relative Y position of center point within the kernel
+   @param delta added to pixel values
+   @param borderType border processing mode (CV_HAL_BORDER_REFLECT, ...)
+   @sa cv::sepFilter2D, cv::hal::SepFilter2D
+ */
+inline int hal_ni_sepFilter_stateless(const uchar * src_data, size_t src_step, int src_type,
+                                      uchar * dst_data, size_t dst_step, int dst_type,
+                                      int width, int height, int full_width, int full_height, int offset_x, int offset_y,
+                                      const uchar * kernelx_data, int kernelx_len,
+                                      const uchar * kernely_data, int kernely_len,
+                                      int kernel_type, int anchor_x, int anchor_y, double delta, int borderType)
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 /**
    @brief hal_sepFilterInit
@@ -177,10 +245,53 @@ inline int hal_ni_sepFilter(cvhalFilter2D *context, uchar *src_data, size_t src_
 inline int hal_ni_sepFilterFree(cvhalFilter2D *context) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 //! @cond IGNORED
+#define cv_hal_sepFilter_stateless hal_ni_sepFilter_stateless
 #define cv_hal_sepFilterInit hal_ni_sepFilterInit
 #define cv_hal_sepFilter hal_ni_sepFilter
 #define cv_hal_sepFilterFree hal_ni_sepFilterFree
 //! @endcond
+
+/**
+   @brief morphology in a stateless manner
+   @param operation morphology operation CV_HAL_MORPH_ERODE or CV_HAL_MORPH_DILATE
+   @param src_data source image data
+   @param src_step source image step
+   @param src_type source image type
+   @param dst_data destination image data
+   @param dst_step destination image step
+   @param dst_type destination image type
+   @param width images width
+   @param height images height
+   @param src_full_width full width of source image (outside the ROI)
+   @param src_full_height full height of source image (outside the ROI)
+   @param src_roi_x source image ROI X offset
+   @param src_roi_y source image ROI Y offset
+   @param dst_full_width full width of destination image
+   @param dst_full_height full height of destination image
+   @param dst_roi_x destination image ROI X offset
+   @param dst_roi_y destination image ROI Y offset
+   @param kernel_data pointer to kernel data
+   @param kernel_step kernel step
+   @param kernel_type kernel type (CV_8U, ...)
+   @param kernel_width kernel width
+   @param kernel_height kernel height
+   @param anchor_x relative X position of center point within the kernel
+   @param anchor_y relative Y position of center point within the kernel
+   @param borderType border processing mode (CV_HAL_BORDER_REFLECT, ...)
+   @param borderValue values to use for CV_HAL_BORDER_CONSTANT mode
+   @param iterations number of iterations
+   @param allowSubmatrix indicates whether the submatrices will be allowed as source image
+   @param allowInplace indicates whether the inplace operation will be possible
+   @sa cv::erode, cv::dilate, cv::morphologyEx, cv::hal::Morph
+ */
+inline int hal_ni_morph_stateless(int operation, const uchar * src_data, size_t src_step, int src_type,
+                                  uchar * dst_data, size_t dst_step, int dst_type,
+                                  int width, int height, int src_full_width, int src_full_height, int src_roi_x, int src_roi_y,
+                                  int dst_full_width, int dst_full_height, int dst_roi_x, int dst_roi_y,
+                                  const uchar * kernel_data, size_t kernel_step, int kernel_type, int kernel_width, int kernel_height,
+                                  int anchor_x, int anchor_y, int borderType, const double borderValue[4],
+                                  int iterations, bool allowSubmatrix, bool allowInplace)
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 /**
    @brief hal_morphInit
@@ -233,6 +344,7 @@ inline int hal_ni_morph(cvhalFilter2D *context, uchar *src_data, size_t src_step
 inline int hal_ni_morphFree(cvhalFilter2D *context) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 //! @cond IGNORED
+#define cv_hal_morph_stateless hal_ni_morph_stateless
 #define cv_hal_morphInit hal_ni_morphInit
 #define cv_hal_morph hal_ni_morph
 #define cv_hal_morphFree hal_ni_morphFree
@@ -373,9 +485,58 @@ inline int hal_ni_remap32f(int src_type, const uchar *src_data, size_t src_step,
                            float* mapx, size_t mapx_step, float* mapy, size_t mapy_step,
                            int interpolation, int border_type, const double border_value[4])
 { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+/**
+   @brief hal_remap with floating point maps
+   @param src_type source and destination image type
+   @param src_data source image data
+   @param src_step source image step
+   @param src_width source image width
+   @param src_height source image height
+   @param dst_data destination image data
+   @param dst_step destination image step
+   @param dst_width destination image width
+   @param dst_height destination image height
+   @param map map for xy values
+   @param map_step map matrix step
+   @param interpolation interpolation mode (CV_HAL_INTER_NEAREST, ...)
+   @param border_type border processing mode (CV_HAL_BORDER_REFLECT, ...)
+   @param border_value values to use for CV_HAL_BORDER_CONSTANT mode
+   @sa cv::remap
+ */
+inline int hal_ni_remap32fc2(int src_type, const uchar *src_data, size_t src_step, int src_width, int src_height,
+                             uchar *dst_data, size_t dst_step, int dst_width, int dst_height,
+                             float* map, size_t map_step, int interpolation, int border_type, const double border_value[4])
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+/**
+   @brief hal_remap with fixed-point maps
+   @param src_type source and destination image type
+   @param src_data source image data
+   @param src_step source image step
+   @param src_width source image width
+   @param src_height source image height
+   @param dst_data destination image data
+   @param dst_step destination image step
+   @param dst_width destination image width
+   @param dst_height destination image height
+   @param mapx map for x values
+   @param mapx_step mapx matrix step
+   @param mapy map for y values
+   @param mapy_step mapy matrix step
+   @param interpolation interpolation mode (CV_HAL_INTER_NEAREST, ...)
+   @param border_type border processing mode (CV_HAL_BORDER_REFLECT, ...)
+   @param border_value values to use for CV_HAL_BORDER_CONSTANT mode
+   @sa cv::remap
+ */
+inline int hal_ni_remap16s(int src_type, const uchar *src_data, size_t src_step, int src_width, int src_height,
+                           uchar *dst_data, size_t dst_step, int dst_width, int dst_height,
+                           short* mapx, size_t mapx_step, ushort* mapy, size_t mapy_step,
+                           int interpolation, int border_type, const double border_value[4])
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
 
 //! @cond IGNORED
 #define cv_hal_remap32f hal_ni_remap32f
+#define cv_hal_remap32fc2 hal_ni_remap32fc2
+#define cv_hal_remap16s hal_ni_remap16s
 //! @endcond
 
 /**
@@ -1275,6 +1436,26 @@ inline int hal_ni_pyrdown_offset(const uchar* src_data, size_t src_step, int src
 //! @endcond
 
 /**
+   @brief Perform Gaussian Blur and upsampling for input tile.
+   @param depth Depths of source and destination image
+   @param src_data Source image data
+   @param src_step Source image step
+   @param dst_data Destination image data
+   @param dst_step Destination image step
+   @param src_width Source image width
+   @param src_height Source image height
+   @param dst_width Destination image width
+   @param dst_height Destination image height
+   @param cn Number of channels
+   @param border_type Border type
+*/
+inline int hal_ni_pyrup(const uchar* src_data, size_t src_step, int src_width, int src_height, uchar* dst_data, size_t dst_step, int dst_width, int dst_height, int depth, int cn, int border_type) { return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+
+//! @cond IGNORED
+#define cv_hal_pyrup hal_ni_pyrup
+//! @endcond
+
+/**
    @brief Canny edge detector
    @param src_data Source image data
    @param src_step Source image step
@@ -1324,6 +1505,26 @@ inline int hal_ni_polygonMoments(const uchar* src_data, size_t src_size, int src
 //! @cond IGNORED
 #define cv_hal_imageMoments hal_ni_imageMoments
 #define cv_hal_polygonMoments hal_ni_polygonMoments
+//! @endcond
+
+/**
+   @brief Calculates a histogram of a set of arrays
+   @param src_data Source imgage data
+   @param src_step Source image step
+   @param src_type Source image type
+   @param src_width Source image width
+   @param src_height Source image height
+   @param hist_data Histogram data
+   @param hist_size Histogram size
+   @param ranges Array of dims arrays of the histogram bin boundaries
+   @param uniform Flag indicating whether the histogram is uniform or not
+   @param accumulate Accumulation flag
+*/
+inline int hal_ni_calcHist(const uchar* src_data, size_t src_step, int src_type, int src_width, int src_height, float* hist_data, int hist_size, const float** ranges, bool uniform, bool accumulate)
+{ return CV_HAL_ERROR_NOT_IMPLEMENTED; }
+
+//! @cond IGNORED
+#define cv_hal_calcHist hal_ni_calcHist
 //! @endcond
 
 //! @}
